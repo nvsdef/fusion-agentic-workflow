@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "status": "pending",
+  "document": null,
+  "data_file_id": null,
+  "run_dir": null,
+  "spec_revision": "SLAB Rev C",
+  "stage": 0,
+  "next_stage": "preflight",
+  "completed_classes": [],
+  "bodies": 0,
+  "components": 0,
+  "measurements": {},
+  "findings": [],
+  "artifacts": {}
+}

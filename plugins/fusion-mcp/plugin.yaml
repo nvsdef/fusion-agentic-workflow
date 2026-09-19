@@ -1,0 +1,11 @@
+name: fusion-mcp
+version: 0.2.0
+source_lock: ../../mcp.lock.json
+runtime:
+  location: host
+  transport: stdio
+  host: 127.0.0.1
+  port: 9876
+skills:
+  - name: fusion-mcp-host
+# Descriptive manifest only. SETUP.md and bootstrap.py own installation.

@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.venv/
+.local/
+.env
+.env.*
+!.env.example
+BUILD_STATE.json
+*.tmp
+*.log
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+mcp-client.json
+# Keep intentional reference images and historical examples; put new run outputs
+# under ~/fusion-renders/<run-id>, never at repository root.
+/SLAB_*.png
+/SLAB_BUILD_REPORT.md
