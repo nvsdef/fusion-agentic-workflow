@@ -18,3 +18,6 @@ mcp-client.json
 # under ~/fusion-renders/<run-id>, never at repository root.
 /SLAB_*.png
 /SLAB_BUILD_REPORT.md
+
+# Local working notes from live runs (publish curated logs under docs/runs/)
+run-notes/

@@ -23,7 +23,10 @@ handle pixels/PDFs, never product modeling decisions.
    available. Do not overwrite an unrelated model. Save before features,
    verify DataFile present, and record stable cloud ID after synchronization.
 4. Initialize ignored BUILD_STATE.json from examples/BUILD_STATE.template.json.
-   Set a unique local non-synced run directory under ~/fusion-renders. Record
+   Set a unique local non-synced run directory under ~/fusion-renders (in Cowork,
+   use the session outputs folder instead: the Linux sandbox that runs the host
+   utilities cannot see the Windows home directory, and `start_render` needs a
+   Windows path both sides can read). Record
    spec revision, document ID, outputs and measured results after every class.
    Use dedicated file-edit tools, not inline shell Python writes. In rehearsal,
    an inline write triggered approval then timed out. Never bypass approval;
@@ -51,6 +54,45 @@ Announce each stage and immediately print `STAGE n · measured values · PASS`,
 FAIL, OPEN or NOT IMPLEMENTED as appropriate. Print every class's count,
 volume and bbox/radii before proceeding. Maintain the task checklist. A later
 summary does not substitute for live progress; the rehearsal missed this rule.
+
+Batching: several one-class calls per turn is fine (run 4 built 12 classes in
+1:29). But a call that fails does not stop the next call in the batch, so never
+batch `start_render` or `create_drawing` behind a call that can refuse. Create
+the run folders in the save step, not in a later guarded call. The first cloud
+`saveAs` has taken 54 s to over 65 s: if it times out, query document name and
+dataFile before doing anything else, and never replay it.
+
+Clock-stamp every Fusion call: return `time.strftime('%H:%M:%S')` at the start
+and end of each `execute_code` result, so per-stage wall time is measured, not
+reconstructed.
+
+## Run profiles
+
+Pick one at the start and say which. Geometry, CMF, layout, line views, sheet and
+report are identical in both. Only stages 7–9 differ.
+
+| | FULL (deliverable) | DEMO (fast, live audience) |
+|---|---|---|
+| Exposure probe | 256 px q25 | **skip: the preview hero is the exposure check** |
+| Hero | raytrace 1200 px q95 (~70 s) | **raytrace 900 px q50 (17 s measured), labelled "preview render"** |
+| Plan | raytrace 1400 px q95, aspect pinned portrait | **viewport capture of the calibrated plan camera, taken in the Design workspace (the Render workspace adds a large ground shadow), labelled "viewport capture, not a raytrace"** |
+| Composite | difference-matte composite | **none: deliver the raw render** |
+| Pad metrics | projected-ROI, both views | projected-ROI on the hero preview, reported as indicative |
+| Native drawing | 2 sheets: iso + parts list, orthogonal views; auto-dimension OFF (~24 s) | same |
+
+Never present a viewport capture or an earlier run's image as a raytrace from
+this run. The DEMO profile is fast because it renders less, not because it
+pretends.
+
+Baseline (28 Oct 2026, FULL profile, Claude in Cowork): build 6 min, CMF and
+layout 2 min, render stage 7.5 min, 2D 1 min, native drawing 3.8 min. Total
+20.5 min. Fusion compute for all 289 bodies was ~15 s; agent turns dominate.
+Run 2 (same day, DEMO profile, fixes applied, no GUI interaction): 7 min 19 s
+preflight to confirmed drawing. Build 1:35, CMF + check + save 0:29, hero
+preview 17 s, all view captures 6 s, drawing ~1:05 + one check. The preview's
+pad and housing metrics matched the q95 hero to 0.1 levels. The first cloud
+`saveAs` took 54 s (0.6 s in run 1), so save early. Tool calls batched together
+still run in sequence; the drawing wait can only be hidden by an async MCP call.
 
 ## Build and repair
 
@@ -82,7 +124,9 @@ required checks from the spec and preserve the results.
 
 Load the spec CMF table. Create ten exact SLAB appearance names from the library
 source exposing the seven required properties; check source before copying.
-Configure unapplied, assign last. Clear face overrides, audit through bodies
+Configure unapplied, assign last, all 289 in one call: set the body appearance
+FIRST, then fix only faces that still differ (spec §5 step 4; face-first is
+~13x slower and is what used to hit the request timeout). Audit through bodies
 and faces. Expected tally: Gray_Flat1, Black_Semi5, Panel_Dark1, Knob_Black196,
 Knob_Orange4, LED_Emissive11, Pointer_White20, Toggle_Gray1, Print_Ink50;
 Tick_Print is unused. All names have SLAB_ prefix. Total289.
@@ -100,20 +144,46 @@ read back; low-resolution test housing band177…185. These values are a tested
 starting point, not universal exposure truth. Explicit `view='current',
 fit=False`; otherwise the wrapper can reset framing. Hero152cm target distance,
 303deg azimuth,46deg elevation,14deg FOV; plan +Z/up+Y orthographic fit×1.10.
-Final heights1200/1400, quality95. Two attempts per view maximum; record gaps.
+Final heights1200/1400, quality95 (FULL profile; DEMO is in the profile table).
+Two attempts per view maximum; record gaps.
+
+FULL plan: pin `sceneSettings.aspectRatio` to a portrait value before the plan
+render. The viewport is landscape and the composite crops to 0.656, so an
+unpinned 2242x1400 plan discards ~60% of its pixels (117 s measured).
 
 Verify finished state AND actual nonempty valid files. No fabricated progress:
 elapsed_seconds may keep increasing after completion. Renders queue; never
 submit another job to check an existing job. Keep mutation calls serialized.
+While a raytrace runs, Fusion's main thread is busy: `execute_code`,
+`render_view` and `get_design_type` block until it finishes. Poll only with
+`get_render_status`, and spend the wait on host-side work (composite the
+previous view, BUILD_STATE, report draft).
+
+**Pad check is an open calibration item, not a tuning loop.** On 28 Oct 2026 the
+spec CMF at brightness 1700 rendered pad red clipped at 255: G:R 0.66, luminance
+~179, against 0.55±0.03 and ≤160.5. Lowering emissive luminance from 150 to 25
+only reached 0.596 / 166.9, because the albedo saturates red on its own. Measure
+once, report FAIL with numbers, and do not edit CMF to chase it.
 
 ## Composite and drawing
 
 Run host utilities with `uv run python`. Compare raw renders before grading.
 The existing measure_classes.py is a DIAGNOSTIC, not a fail-closed gate: it can
 count power LED as an eleventh pad and highlights as emitters. Confirm exactly
-ten square pad regions using projected ROIs or reviewed overlays. Required
+ten square pad regions using projected ROIs: after the render finishes, project
+each pad's top-centre with `app.activeViewport.modelToViewSpace`, write
+`{"vp":[w,h],"pads":[[x,y],...]}` to JSON, and run
+`scripts/pad_roi.py <render.png> <rois.json>` (it scales by image height over
+viewport height). Colour thresholds also catch the orange knobs. Required
 G:R0.55±0.03, RGB spread≤7, mean pad luminance144…160.5. Preserve failed checks.
 Housing/reference gaps can be reported without an endless exposure loop.
+
+composite.py keys by flood-fill within ±6 of the modal backdrop. On 28 Oct 2026
+the backdrop was not uniform (border std 1.66, levels 172–178), so the matte
+leaked: a halo on the hero, and the plan crop shifted off the product. Raising
+the tolerance did not fix it. Until a difference matte (empty-plate render at
+identical settings) is implemented, inspect every composite and fall back to the
+raw render if the matte leaks.
 
 Load fusion-2d-drawings. Announce monochrome line-art explicitly; it does not
 change appearances. Save colored model/archive. Capture all four views,
@@ -121,17 +191,70 @@ restore prior camera/style in finally. Preserve calibrated frames through PDF
 placement. Compose a run-specific sheet JSON from measured geometry, not old
 model/date/material claims. Rasterize with PyMuPDF or Poppler and inspect.
 
+**Not by default: the composed sheet as a picture in the Design.** The drawing and
+parts list belong in the Drawing workspace (native drawing below). Only if a
+viewer explicitly asks to see the composed PDF inside Fusion: rasterize the
+PDF at 150 dpi (`pdftoppm -png -r 150 -singlefile`) and insert it as a canvas
+on the root XY plane: `root.canvases.createInput(png, root.xYConstructionPlane)`,
+then `canvas.transform` = Matrix2D with cells (0,0)=42.0, (1,1)=29.7 (true A3 in
+cm) and translation (0,2)=14.0, (1,2)=-14.85, which puts it beside the model at
+X +140…+560 mm. Name it as an image ("GA_Sheet_A3 (composed sheet image)"),
+frame a top orthographic view on both, and save. A canvas is not a body or a
+component, so the 289/12 checks stand. Its timeline entry reports healthState 4
+with no message; exclude canvases from the health check. Measured: 2 s.
+
 Native drawing is experimental and LAST Fusion action. A timeout may succeed;
 wait then inspect product state once, never blind-retry. Drawing active proves
 creation/activation, not sheet correctness. If it fails, deliver composed PDF
 and report the native gap. Do not use export_drawing_pdf.
 
+**Create the native drawing through the Drawing API in `execute_code`, main
+assembly only, two sheets.** Exact code: fusion-2d-drawings §3a. Do not use the `create_drawing` MCP tool: the
+pinned add-in hard-codes `isComponentSheetGenerated = True` with
+`AllLevelsSheetCreationType`, so Fusion also builds one sheet per component
+(11 more sheets of views). That is what held the main thread for ~2.5–3.8 min
+and pushed every call past Cowork's ~65 s MCP timeout. Turning off
+iso/parts list/dimensions (tried in runs 2 and 3) removed the sheet the user
+wants and saved nothing. Settings (`import adsk.drawing as D`):
+
+- `createDrawingInput(doc.dataFile, AutomaticDrawingCreationMode)`;
+  FromScratch base, ISO, mm, `A3ISOSheetSize`, landscape,
+  `sheetCreationType = FirstLevelOnlySheetCreationType`
+- global: main-assembly sheet ON; component, sub-assembly, animation,
+  flat-pattern and folded-model sheets OFF; **auto-dimension OFF**
+  (`globalPreferences.isAutoDimensionEnabled` and
+  `mainAssemblyPreferences.autoDimensionPreferences.isAutoDimensionEnabled`)
+- main assembly: iso sheet ON with `isPartsListIncluded = True`; orthogonal
+  sheet ON, no parts list; view style visible edges, tangent edges off
+- `mgr.createDrawing(di)` then `app.documents.open(df)`
+
+**Never enable automatic dimensioning on SLAB.** On 28 Oct 2026, runs 4 and 5
+(parts list ON + auto-dimension ON) raised `Exception in acadm.crx ARX Command —
+Unhandled Exception c0000027` in Fusion's drawing engine. The drawing file was
+still created in the cloud with 2 sheets, so an API readback reported success,
+but the drawing never displayed. With auto-dimension OFF and everything else
+the same, in the same Fusion session, it created in 19 s, opened in 5 s, and
+showed the parts list. Dimensions live on the composed A3 PDF (measured
+values). The crash dialog is modal and invisible to the agent: after opening,
+**ask the user to confirm the drawing displayed**, and never claim a native
+drawing from file creation alone.
+
+Measured 28 Oct 2026 (SLAB_TOP_v8, auto-dimension off): `createDrawing` 19 s,
+open 5 s. **24 s total, no timeouts, no crash.** The API sets sheets, not individual views: the
+orthogonal sheet comes as one set. Write a JSON timing log *before* opening:
+reading `app.activeProduct.productType` on the just-opened Drawing raises
+`InternalValidationError : adapter`, and the MCP response is lost.
+The fix belongs in the add-in too: expose `component_sheets` and
+`sheet_creation` arguments on `create_drawing` (default off / first level).
+
 ## Report and end
 
 Write outside Fusion. Include artifact paths and manifest, per-class checks,
 actual CMF, render metrics and visual findings, native-drawing status, changes
-with reasons, and unresolved decisions. DEC-C3 arithmetic:46−61.18=−15.18 mm
-against+2; shortfall17.18, closed nonblocking no-bezel decision.
+with reasons, and unresolved decisions. DEC-C3 arithmetic, from the measured
+tallest feature: 46.000−61.150=−15.150 mm against +2; shortfall 17.150 (the
+historical −15.18 / 17.18 used the API-padded 61.18). Closed, nonblocking
+no-bezel decision.
 
 Keep DEC-C1…C7 closed. Carry TBD-12…19 and omitted internals forward. Zero user
 parameters means no demonstrated named-parameter editing. Do not quote default

@@ -15,12 +15,15 @@ One agent owns the dependent CAD sequence. Generate geometry through live MCP; d
 - Announce stages and visible workspace/style transitions. Print measured stage/class results immediately, with PASS/FAIL/OPEN as warranted.
 - Renders: use `view='current', fit=False`, read back camera/exposure, verify files. Elapsed age is not completed render duration.
 - Explain monochrome line-art/Drawings before switching. Restore prior display/camera in finally. Save colored model/archive before native Drawing. Native drawing is experimental and last; a created document is not proof its sheets are correct.
+- Native drawing: use the Drawing API through `execute_code` (fusion-2d-drawings §3a): main assembly only, iso + parts list sheet and orthogonal sheet, **automatic dimensioning off**. Auto-dimension on SLAB crashes Fusion's drawing engine (`acadm.crx`, c0000027) behind a modal the agent cannot see, while the file is still created. Ask the user to confirm the drawing displayed.
+- The person at the desk must not click, type, Esc or Ctrl+Z in Fusion during a run. A stray GUI sketch silently deleted a passed class once. Start every class call with the `guard()` from slab-product-spec §1b. Treat a deltas body count that disagrees with your running total as a stop signal.
+- Never batch a render or drawing call behind a call that can refuse: a failed call does not stop the next one in the batch.
 - Never call `export_drawing_pdf` or write `backgroundEnvironment` in this pipeline. Do not force direct modeling mode or create a new document through a known-unreliable API path.
 - Approval denial/timeout is a stop condition. Do not bypass it. Use dedicated file-edit tools for checkpoints rather than inline shell writes. No global approval-policy changes.
 
 ## Files and scope
 
-Run outputs go in a unique local, non-synced directory, e.g. `~/fusion-renders/<run-id>/`. Initialize ignored `BUILD_STATE.json` from `examples/BUILD_STATE.template.json`; record cloud ID, spec revision, completed classes, findings, artifact paths. Never ship a completed checkpoint as the template.
+Run outputs go in a unique local, non-synced directory, e.g. `~/fusion-renders/<run-id>/` (in Cowork, the session outputs folder, which both Fusion and the sandbox can see). Initialize ignored `BUILD_STATE.json` from `examples/BUILD_STATE.template.json`; record cloud ID, spec revision, completed classes, findings, artifact paths. Never ship a completed checkpoint as the template.
 
 No PCB/battery/hatch/rear-I/O/shaft holes/lightguides/ribs/draft work unless explicitly scoped. Do not invent TBD values. A parametric design type is not proof of named-parameter-driven geometry.
 

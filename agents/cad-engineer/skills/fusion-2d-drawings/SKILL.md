@@ -212,12 +212,74 @@ Budget one fix round and check the whole page, not just the region you changed.
 
 ---
 
-## 3 · The native drawing document — it works
+## 3 · The native drawing document
+
+### 3a · Default: Drawing API through `execute_code` (tested 28 Oct 2026)
+
+Two sheets in the Drawing workspace: an isometric view with the **parts list**,
+and the orthogonal views. Main assembly only. Measured on SLAB: `createDrawing`
+19 s, open 5 s, no timeouts. Save the coloured model first; this is the last
+Fusion action. Write the log before opening, because the MCP response can be
+lost once the Drawing becomes active.
+
+```python
+import time, json, adsk.drawing as D
+LOG = r'<run folder>\drawing_log.json'
+r = {'t0': time.strftime('%H:%M:%S')}; w = lambda: json.dump(r, open(LOG, 'w'), indent=1)
+mgr = D.DrawingManager.get()
+di = mgr.createDrawingInput(app.activeDocument.dataFile, D.DrawingCreationModes.AutomaticDrawingCreationMode)
+di.baseDocumentType = D.BaseDocumentTypes.FromScratchBaseDocumentType
+di.standard = D.DrawingStandardTypes.ISODrawingStandardType
+di.units = D.DrawingUnitTypes.MillimeterDrawingUnitType
+di.sheetSize = D.SheetSizes.A3ISOSheetSize
+di.orientationType = D.SheetOrientationTypes.LandscapeSheetOrientationType
+di.sheetCreationType = D.SheetCreationTypes.FirstLevelOnlySheetCreationType
+g = di.automationPreferences.globalPreferences
+g.isMainAssemblySheetGenerated = True
+g.isComponentSheetGenerated = False          # the add-in tool forces True -> 12+ sheets, minutes
+g.isSubAssemblySheetGenerated = False
+g.isAnimationSheetGenerated = False
+g.isFlatPatternSheetGenerated = False
+g.isFoldedModelSheetGenerated = False
+g.isDetectAndOmitFasteners = True
+g.isAutoDimensionEnabled = False             # ON crashes acadm.crx on SLAB (see below)
+m = di.automationPreferences.mainAssemblyPreferences
+m.isoViewSheetPreferences.isSheetCreated = True
+m.isoViewSheetPreferences.isPartsListIncluded = True
+m.orthogonalViewSheetPreferences.isSheetCreated = True
+m.orthogonalViewSheetPreferences.isPartsListIncluded = False
+m.autoDimensionPreferences.isAutoDimensionEnabled = False
+v = m.drawingViewPreferences
+v.style = D.DrawingViewStyleTypes.VisibleEdgesDrawingViewStyleType
+v.tangentEdgesType = D.TangentEdgeDisplayTypes.OffTangentEdgeDisplayType
+w(); df = mgr.createDrawing(di); r['t_created'] = time.strftime('%H:%M:%S'); w()
+app.documents.open(df); r['t_opened'] = time.strftime('%H:%M:%S'); w()
+r
+```
+
+Do not read `app.activeProduct.productType` straight after opening: it raises
+`InternalValidationError : adapter`. The API exposes the sheets but not their
+views or parts lists, so file creation proves nothing about display. **Ask the
+user to confirm the drawing and parts list are on screen.**
+
+**Keep automatic dimensioning OFF.** With auto-dimension ON (plus parts list),
+Fusion's drawing engine raised `Exception in acadm.crx ARX Command — Unhandled
+Exception c0000027`. The drawing never displayed, although the file and its two
+sheets were created. That is a modal dialog the agent cannot see. Dimensions
+live on the composed A3 sheet, measured from geometry (§2).
+
+### 3b · Fallback: the `create_drawing` MCP tool
 
 ```
 create_drawing(sheet_size='A3ISO', standard='ISO', units='mm',
                center_marks=False, open_drawing=True)
 ```
+
+The pinned add-in always generates a sheet per component
+(`isComponentSheetGenerated = True`, all levels). On SLAB that is 12+ sheets
+and 2.5–4 minutes of main-thread time, and its own flags (auto-dimension, parts
+list, iso) don't change that. Use it only if `execute_code` is unavailable.
+Expect timeouts, and pass `auto_dimension=False`.
 
 Two arguments are non-negotiable: `sheet_size` needs the full enum stem
 **`A3ISO`**, not `A3`, and `center_marks=True` raises `CenterMarkDisplayTypes

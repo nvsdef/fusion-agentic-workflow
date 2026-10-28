@@ -11,7 +11,8 @@ Read BEFORE running; not a substitute for live measurements. slab-run owns order
 - Graphics table1023±10 mm²; grids75.8 each; R42.1/I15.2/V27.9 ±1.5 mm². Artwork remains provisional; inspect glyph/seam relationships too.
 - Layout:knob gap13.000, knob-pad7.700, recess margin1.000, pad inset0.200, pad-panel0.700 mm. Indicator/boss checks not implemented.
 - CMF:ten exact SLAB appearances, nine assigned;289 bodies; both albedos and finish properties read back;11 emissive bodies. Unknown names/properties and swapped assignments fail.
-- Render:actual files, correct camera, explicit current/fit=False, calibrated exposure. Ten pad regions EXCLUDING power LED; G:R0.55±0.03, RGB spread≤7, mean pad luminance144…160.5. Existing image script is diagnostic and can misclassify highlights; inspect/record masks.
-- Sheet:four nonempty line views, calibrated frame preserved; crop error≤0.11% target, inspect clipping independently; A3 raster reviewed. Native Drawing activation is not native sheet signoff.
+- Render:actual files, correct camera, explicit current/fit=False, calibrated exposure. Ten pad regions EXCLUDING power LED, measured with scripts/pad_roi.py at projected ROIs; G:R0.55±0.03, RGB spread≤7, mean pad luminance144…160.5. **Known open calibration item:** every 28 Oct 2026 run measured G:R 0.663 / lum 179.5 / spread 4 (red clipped), at both preview and q95. Report it as FAIL; do not tune CMF to chase it. A preview render measures the same as a final.
+- Sheet:four nonempty line views, calibrated frame preserved; crop error≤0.11% target (measured 0.04/0.07/0.11%), inspect clipping independently; A3 raster reviewed. Material column reads TBD.
+- Native drawing: 2 sheets (iso + parts list of the 12 components; orthogonal views), auto-dimension off, created in ~20–30 s. The user confirms it displayed: file creation alone is not success (acadm.crx crash case).
 
-Carry DEC-C1…C7 closed, TBD-12…19 open. Report exact failures without rewriting tolerances. Prior rehearsal had a plan-luminance gap and provisional seam overlap; it was completed_with_findings, not unconditional acceptance.
+Carry DEC-C1…C7 closed, TBD-12…19 open. Report exact failures without rewriting tolerances. Prior rehearsals had a plan-luminance gap, a pad G:R gap and a provisional V/seam overlap (5.6 mm²); they were completed_with_findings, not unconditional acceptance.

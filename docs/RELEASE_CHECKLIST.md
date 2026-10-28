@@ -20,6 +20,9 @@
 - [ ] Full cold build with per-class evidence; CMF and layout audited.
 - [ ] Render files and pad identities verified; open gaps reported.
 - [ ] Line-art frames preserved; PDF raster checked; native drawing inspected.
+- [ ] Native drawing displayed on screen with parts list (human-confirmed; no acadm.crx dialog). Auto-dimension off.
+- [ ] Only the repository copies of the skills are active (no legacy plugin or older uploaded skills with the same names).
+- [ ] Nobody touched the Fusion GUI during the timed run; per-class guard never fired.
 - [ ] Interrupted resume and second-document rehearsal show no duplication.
 - [ ] Record model/provider/context limits and human interventions.
 - [ ] Test a named 27B model before making a 27B compatibility claim.

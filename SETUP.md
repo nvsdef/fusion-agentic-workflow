@@ -44,6 +44,17 @@ hermes config set mcp_servers.fusion360.tools.include '["ping","get_design_type"
 
 Use `hermes config get <key> --json` to verify each. Current client defaults vary by release. The companion uses 300-second add-in and 330-second socket timeouts; the client must wait longer. Do not turn off approvals globally.
 
+### Claude desktop app (Cowork) or Claude Code
+
+This is the client the 28 Oct 2026 timed runs used (docs/runs/2026-10-28.md).
+
+1. **Register the MCP server.** In the Claude desktop app, open Settings > Developer > Edit Config and add the `fusion360` entry from `.local/mcp-client.json` under `mcpServers`, keeping any existing servers. Restart the app and confirm the `fusion360` tools are listed. For Claude Code: `claude mcp add fusion360 -- <absolute-python-path> -m fusion360_mcp --mode socket`, plus the env vars from the same file.
+2. **Open the clone as the workspace folder.** `CLAUDE.md` points the agent at `AGENTS.md`, `SOUL.md` and the six stage skills, which are read directly from `agents/cad-engineer/skills/`. No skill upload is needed.
+3. **Don't run a second, older copy of these skills.** If this machine has the legacy `fusion-product-design` plugin, or older uploaded skills named `slab-run`, `slab-product-spec` or `fusion-*`, disable or remove them, or ask the agent explicitly to use the repo copies. Conflicting copies cost time and give contradictory instructions (for example, native drawing first versus last).
+4. **The call timeout is about 65 s and cannot be raised from the client.** The skills handle this. The first cloud `saveAs` and a raytrace can exceed it while still succeeding. The agent then queries document state instead of retrying.
+5. **Host utilities run in the Cowork Linux sandbox** with `python3`, not `uv run`. They need Pillow, numpy and reportlab, plus `pdftoppm` (poppler-utils). If one is missing: `pip install --break-system-packages pillow numpy reportlab`. Run outputs go to the session outputs folder, because the sandbox cannot see `~/fusion-renders` on Windows.
+6. **Pre-approve** the fusion360 tools and shell for the session where your client allows it, so an approval prompt cannot stall an unattended run.
+
 ## Skills and identity
 
 Open this clone as the client workspace. AGENTS.md tells the agent where the six skills and local identity live. The agent can read their SKILL.md files directly; **no global SOUL.md replacement is needed**.

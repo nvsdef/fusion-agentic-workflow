@@ -31,20 +31,49 @@ letterform blocks nothing downstream. Every other checksum halts.
 
 ## 1 · API utilities
 
-`execute_code` shares no state between calls. Paste these at the top of each one.
 They are how the Fusion API works, not what SLAB is — the equivalent of a
 utility module a human engineer would already have.
 
+**Register them once per session, not once per call.** Local names do not
+survive between `execute_code` calls, but the `builtins` module does (verified
+28 Oct 2026, build 2705.1.11). So in the first call, `exec` this block into a
+module and publish it as `builtins.SU`; every later call starts with `S = SU`
+and uses `S.rect(...)`, `S.extrude(...)`. Inside the module, resolve
+`app`/`des`/`root` through a function on each use, never cache them at module
+level, because the active product changes when the document is saved or
+switched. This saves re-pasting ~3 KB on each of ~20 calls. It is still API
+vocabulary only: every sketch, dimension and extrude is composed in the call
+that builds the class. If `SU` is missing (Fusion restarted), register it again.
+
+**Registration, verbatim** (first call of the session, together with the cloud
+save; the code blocks below are the body of `SRC`):
+
+```python
+import builtins, types
+SRC = r'''  ...the §1 block below, then the §1b block...  '''
+m = types.ModuleType('slabu'); exec(SRC, m.__dict__); builtins.SU = m
+# every later call:  S = SU; S.guard(); c = S.comp('SLAB_...') ...
+```
+
+Before a fresh run in the same Fusion session, clear the guard state:
+`SU.EXPECT.clear()`.
+
+Naming: inside an `execute_code` call the active design is pre-bound as
+`design`. Snippets elsewhere in these skills that write `des.appearances`,
+`des.timeline`, `des.renderManager` mean that object (`des = design`). Inside the
+registered module, use the function `des()`.
+
 ```python
 import adsk.core, adsk.fusion, math
-app  = adsk.core.Application.get()
-des  = adsk.fusion.Design.cast(app.activeProduct)
-root = des.rootComponent
 V  = adsk.core.ValueInput.createByReal
 P3 = adsk.core.Point3D.create
 MM = lambda v: v / 10.0        # THE API IS IN CENTIMETRES. Every spec number is mm.
 
+def des():                     # resolve on every use; never cache the product
+    return adsk.fusion.Design.cast(adsk.core.Application.get().activeProduct)
+
 def comp(name):                # get-or-make: never fork a second component
+    root = des().rootComponent
     for o in root.occurrences:
         if o.component.name == name: return o.component
     o = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
@@ -166,6 +195,47 @@ def top_area(b):               # largest horizontal planar face, mm^2
                       and abs(f.geometry.normal.z) > 0.99] + [0]), 1)
 ```
 
+### 1b · Run helpers (register with §1)
+
+Used by every class in the 28 Oct 2026 runs. `poly` builds a closed polyline
+from shared sketch points (letterforms, ticks); `guard` is rule R9a.
+
+```python
+def coll(items):               # ObjectCollection from a Python list
+    pf = adsk.core.ObjectCollection.create()
+    for p in items: pf.add(p)
+    return pf
+
+def poly(sk, pts_mm):          # closed polyline, endpoints shared -> always 1 loop
+    L = sk.sketchCurves.sketchLines
+    P = [P3(MM(x), MM(y), 0) for x, y in pts_mm]
+    first = L.addByTwoPoints(P[0], P[1]); prev = first
+    for i in range(1, len(P) - 1):
+        prev = L.addByTwoPoints(prev.endSketchPoint, P[i + 1])
+    L.addByTwoPoints(prev.endSketchPoint, first.startSketchPoint)
+
+def cbbox(c):                  # component bbox, mm
+    bb = [bbox(b) for b in c.bRepBodies]
+    return [min(v[i] for v in bb) for i in range(3)] + [max(v[i] for v in bb) for i in range(3, 6)]
+
+def health():                  # timeline object state; entity.healthState raises on occurrences
+    tl = des().timeline
+    return [(i, tl.item(i).name) for i in range(tl.count)
+            if int(tl.item(i).healthState) != 0]           # expect []
+
+EXPECT = {}                    # component -> body count, set after each PASS
+def guard():                   # first line of every class call (R9a)
+    d = des()
+    assert d.activeEditObject.objectType == 'adsk::fusion::Component', 'GUI edit open'
+    have = {o.component.name: o.component.bRepBodies.count for o in d.rootComponent.occurrences}
+    lost = {k: (v, have.get(k)) for k, v in EXPECT.items() if have.get(k) != v}
+    assert not lost, 'previously passed classes changed: %r' % lost
+```
+
+After a class passes, record it: `S.EXPECT['SLAB_Keypad'] = 10`. The 11
+component entries sum to 289 when the build is complete (the root is the 12th
+component and holds no bodies).
+
 ### The four accessors that get guessed wrong
 
 These are **verified working through `execute_code` on this build.** Paste them;
@@ -282,9 +352,21 @@ rectangle to the outline.** Clamped notches remove the wrong volume and the
 **R9 — Every class must be re-runnable.** Start each one with:
 
 ```python
-c = comp('SLAB_Housing_Upper')
-if c.bRepBodies.count: reset_component(c)
+S = SU; S.guard()              # no GUI edit open, earlier classes intact (R9a)
+c = S.comp('SLAB_Housing_Upper')
+if c.bRepBodies.count: S.reset_component(c)
+# ... build, measure ...
+if PASS: S.EXPECT['SLAB_Housing_Upper'] = 1
 ```
+
+**R9a — Guard the classes you already built.** The first line above, plus a
+check that every previously passed component is still in the tree with its body
+count, belongs at the top of every class call. On 28 Oct 2026 a stray GUI click
+opened a sketch between classes 2 and 3; class 3 measured PASS in its own call,
+then the whole component vanished with no error. The MCP's `deltas.body_count`
+showed it at the next call (1 -> 2 when 7 were expected). **A deltas body count
+that disagrees with your running total is a stop signal**: inspect the tree, do
+not explain it away.
 
 Without it, a failed class that you retry leaves the first attempt behind and you
 end up with `SLAB_Housing_Upper`, `(1)`, `(2)`, `(3)` — four identical bodies,
@@ -332,7 +414,7 @@ from the operator** (DEC-C1). All values mm.
 4. Fillet the **4 vertical edges** at **R10** (R2). Faces 6 -> 10.
 5. Shell **2.5**, removing the face at **Z 23.0** — the bottom.
 
-> extrude **1522.926 cm3** · after shell **219.091 cm3**
+> raw extrude **1524.900 cm3** · after fillet **1522.926 cm3** · after shell **219.091 cm3**
 > bbox `[-97.5, -170.0, 23.0, 97.5, 170.0, 46.0]`
 
 ---
@@ -567,6 +649,28 @@ bodies, all inside this section's ±1.5 mm² bands. Repair deleted only the
 named legend extrude and sketch, not the component's already-passing table,
 grids, and scale. This is a provisional tested construction, not ID approval.
 
+**Tested outlines (28 Oct 2026, passed first attempt: R 42.2, I 15.2, V 28.1 mm²).**
+Provisional under TBD-18. Coordinates in mm; R is relative to its anchor
+(x0, y0) = (-69.5, -146.7); I and V are absolute X with y0 = -146.7. Draw each as
+a closed polyline, all in one sketch on `plane(c, 46.0)`, extrude every profile
+except the R counter, which is the profile whose centroid lies in x0+[1.6, 4.9],
+y0+[5.6, 7.9].
+
+| Stroke | Corners (x, y) |
+|---|---|
+| R stem | rect x0+[0, 1.6], y0+[0, 9.5] |
+| R top bar | rect x0+[0, 6.5], y0+[7.9, 9.5] |
+| R waist | rect x0+[0, 6.5], y0+[4.0, 5.6] |
+| R bowl side | rect x0+[4.9, 6.5], y0+[4.0, 9.5] |
+| R leg | (x0+4.6, y0) (x0+6.5, y0) (x0+4.5, y0+4.4) (x0+2.6, y0+4.4) — overlaps the waist by 0.4 so it merges |
+| I | rect x [60.2, 61.8], y0+[0, 9.5] |
+| V left | (63.6, y0+9.5) (65.2, y0+9.5) (67.9, y0) (66.3, y0) |
+| V right | (69.0, y0+9.5) (70.6, y0+9.5) (67.9, y0) (66.3, y0) |
+
+Expect 16 profiles, 15 kept, 3 bodies. Known open item: the V's right stroke
+crosses the table seam (X 68.0–69.0) and overlaps it by 5.6 mm². That is the
+TBD-18 seam question; report it, do not move the letter.
+
 What is not yours is the verdict:
 
 - **Do not call a miss "cosmetic only".** Area is the checksum for this class
@@ -628,8 +732,20 @@ Run it before building.
 3. Set every property **while unapplied** — a write on an applied appearance
    forks a duplicate. Set `surface_albedo` **and** `opaque_albedo` together; the
    renderer reads the first and writing only the second leaves a stale colour.
-4. Assign to bodies last. Clear face overrides explicitly —
-   `b.appearance = x` does not.
+4. Assign to bodies last: **set `b.appearance` first, then fix only faces that
+   still differ.** `BRepFace.appearance` returns the *inherited* appearance
+   (`Steel - Satin` on a fresh body), so checking faces before the body write
+   treats every face as an override and writes all of them. Measured 28 Oct 2026:
+   face-first took 40.9 s for 116 bodies (887 face writes); body-first took
+   4.8 s for 173 bodies (0 face writes). Body-first assigns all 289 in ~8 s, one
+   call, well clear of the request timeout.
+   ```python
+   def assign(b, ap):
+       b.appearance = ap
+       for f in b.faces:
+           if f.appearance is not None and f.appearance.name != ap.name:
+               f.appearance = ap
+   ```
 5. Resolve appearances by **iterating** `des.appearances`, never `itemByName`.
 6. **Never assign a library appearance to a body.** Every one of the 289 bodies
    carries a `SLAB_*` appearance built in step 2. Assigning the nearest-sounding
@@ -661,11 +777,15 @@ Two components split by position, not by name:
 inlays (-> `SLAB_Knob_Black`); the other 20 are `SLAB_Pointer_White`.
 `SLAB_Power_Switch` — toggle -> `SLAB_Toggle_Gray`, LED -> `SLAB_LED_Emissive`.
 
-> End state: **11 appearances** (ten `SLAB_*` + the library source), zero
+> End state: **11 appearances** (ten `SLAB_*` + the document default
+> `Steel - Satin`; `addByCopy` from the library does not add the source), zero
 > duplicates, zero bodies without an appearance, zero stray face overrides
 
-This pass touches every face of 289 bodies and **can exceed the request timeout
-while completing normally** — re-query the tally, do not retry.
+**Do not tune an applied appearance during rendering.** On 28 Oct 2026 the first
+write to the applied `SLAB_LED_Emissive` did not fork; the second did, the
+bodies moved to the copy, and the orphan could not be deleted
+(`3 : the material is in use` with zero body or face references). CMF values
+are specification. If a render check fails, report it.
 
 ---
 

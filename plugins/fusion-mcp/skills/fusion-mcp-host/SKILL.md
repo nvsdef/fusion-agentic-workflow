@@ -34,11 +34,14 @@ are explicitly not CAD evidence.
 ## Timeouts and recovery
 
 The pinned companion uses add-in300s, socket330s; client360s recommended.
-These are request budgets, not render-job duration. A timeout does not cancel
-queued work. Never replay a mutation after an uncertain send. Wait, query live
-state, audit names/counts/health and checkpoint identity, then repair only owned
-failing features. Save before each class. No universal source-line/profile cap
-is established:173 tick profiles succeeded in one feature-class call.
+The Claude desktop app (Cowork) times out at about 65 s and cannot be
+raised. The first cloud saveAs (54–70 s measured) and raytraces can exceed it
+while succeeding. These are request budgets, not render-job duration. A timeout
+does not cancel queued work. Never replay a mutation after an uncertain send.
+Wait, query live state, audit names/counts/health and checkpoint identity, then
+repair only owned failing features. Save at the start and after CMF; later
+saves took about 1 s. No universal source-line/profile cap is established: 173
+tick profiles succeeded in one feature-class call.
 
 ## Rendering/drawing
 
@@ -47,8 +50,10 @@ Jobs queue and die with Fusion. Verify finished state plus actual valid file;
 elapsed may continue growing after completion and is not proof of progress.
 Avoid include_image on status; inspect the returned local image file.
 
-Native drawing succeeded in the predecessor rehearsal despite a300s timeout.
-It is preview API and LAST Fusion action. Drawing activation is not sheet
+Native drawing: prefer the Drawing API through execute_code (fusion-2d-drawings
+§3a). The create_drawing tool forces per-component sheets and holds the main
+thread for minutes. Keep auto-dimension off: on SLAB it crashed acadm.crx behind a
+modal that ping cannot see. It is preview API and LAST Fusion action. Drawing activation is not sheet
 signoff. Follow fusion-2d-drawings. Never use export_drawing_pdf, and do not
 replace or restart the live add-in during a campaign.
 

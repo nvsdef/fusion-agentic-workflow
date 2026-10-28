@@ -80,7 +80,12 @@ that prove the call worked, and read them on the way past:
 ```
 
 **It also returns free assertions.** Every call reports `body_count`, `mass_g`
-and before/after bounding-box deltas. Use them as the first check:
+and before/after bounding-box deltas. Use them as the first check, and **treat a
+mismatch with your expected running total as a stop signal.** On 28 Oct 2026 the
+deltas showed 1 -> 2 bodies when 7 were expected: a stray GUI sketch had silently
+removed a whole component. The deltas were right; the agent dismissed them as
+instrumentation noise for one more class. The bbox also includes open sketch
+geometry, so a jump with no new bodies means something was drawn in the GUI.
 
 | Operation | Expected signature |
 |---|---|
@@ -180,15 +185,18 @@ opaque_f0, opaque_emission, opaque_luminance, opaque_luminance_modifier`.
 `surface_albedo`; writing only `opaque_albedo` leaves a stale colour that no
 geometric checksum can see.
 
-**Clear face-level overrides explicitly.** A face appearance beats the body
-appearance and `b.appearance = x` does not touch it:
+**Clear face-level overrides explicitly, after the body write.** A face
+appearance beats the body appearance and `b.appearance = x` does not touch it.
+But `f.appearance` returns the *inherited* appearance when there is no override,
+so check faces only after setting the body. Otherwise every face looks like an
+override and gets written (measured 40.9 s for 116 bodies against 4.8 s for 173):
 
 ```python
 def assign(b, ap):
+    b.appearance = ap
     for f in b.faces:
         if f.appearance is not None and f.appearance.name != ap.name:
             f.appearance = ap
-    b.appearance = ap
 ```
 
 Audit afterwards, resolving **through the bodies** rather than by name — that is
@@ -216,9 +224,10 @@ geometry change.
 
 ## 5 · Measuring a render
 
-The API cannot enable a ground plane, so the backdrop renders **perfectly
-uniform** — measured std 0.000 at rgb (178,178,178). Two exact ways to separate
-subject from plate:
+The API cannot enable a ground plane. One session measured the backdrop
+**perfectly uniform** (std 0.000 at rgb 178,178,178), but on 28 Oct 2026 it varied
+172–178 with border std 1.66, and colour-tolerance keying leaked. Prefer the
+difference matte. Two ways to separate subject from plate:
 
 1. **Difference matte.** Hide every occurrence (`o.isLightBulbOn = False`),
    render the empty plate at identical settings, unhide, and take
@@ -294,8 +303,8 @@ is proof the drawing was created.
    ```python
    [(i, design.timeline.item(i).name)
     for i in range(design.timeline.count)
-    if design.timeline.item(i).entity is not None
-    and int(design.timeline.item(i).entity.healthState) != 0]    # expect []
+    if int(design.timeline.item(i).healthState) != 0]    # expect []
+   # timeline object's own state; `.entity.healthState` raises on occurrences
    ```
 3. Name every sketch and body as you create it. Delete features **by name**;
    a sketch matched on curve count will eventually match the wrong one and leave

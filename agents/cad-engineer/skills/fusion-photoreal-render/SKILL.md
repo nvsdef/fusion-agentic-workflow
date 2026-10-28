@@ -56,8 +56,9 @@ materials until it is pinned.
 
 ### Set brightness explicitly, then read it back. Every run.
 
-**A fresh document defaults to `brightness = 1.2`** — measured at exactly
-1.2000000476837158 in two unrelated documents. At that value the model renders as
+**The default is not reliable**: two documents read exactly
+1.2000000476837158, and a fresh document on 28 Oct 2026 read 1000.0. Write
+1700 regardless. At 1.2 the model renders as
 a **pure black silhouette against a correctly-lit background**: a SolidColor
 background is painted rather than lit, so it survives at full strength while the
 model receives no light at all. The Design canvas has its own lighting and looks
@@ -172,9 +173,11 @@ probe between each. Batching eight writes took the MCP process down once.
 
 ## 3 · Measure with a rendered plate, not a colour guess
 
-Because the API cannot enable a ground plane, the backdrop renders **perfectly
-uniform** — measured std 0.000 at rgb (178,178,178). Exploit that. Two exact
-mattes:
+The API cannot enable a ground plane. One session measured the backdrop
+**perfectly uniform** (std 0.000 at rgb 178,178,178). On 28 Oct 2026 it was not:
+levels 172–178, border std 1.66. composite.py's ±6 flood-fill leaked, leaving a
+halo on the hero and pushing the plan crop off the product. Check the plate's
+std before trusting method 2; method 1 does not depend on it. Two mattes:
 
 1. **Difference matte.** Hide every occurrence, render the empty plate at
    identical settings, unhide, and take `|render − plate| > 10` as the subject.
@@ -287,10 +290,14 @@ the actual pixel dimensions read off the file on disk.
 
 ### Polling — read `elapsed_seconds`, not `progress_percent`
 
-**`progress_percent` reports only 0 / 50 / 100.** Queued is 0, processing is 50,
-finished is 100. **50 does not mean half done** — it means "running", and it will
-sit at 50.0 for the entire render. A model watching that number concludes the job
-has hung. It has not.
+**`progress_percent` varies by build.** Older builds reported only 0 / 50 / 100,
+where 50 meant "running", not half done. On 28 Oct 2026 (2705.1.11) it reported
+real values (24.2, 60.8, 77.6, 99.8). Treat it as indicative, and use state plus
+the file on disk as the completion test.
+
+**Measured durations, 28 Oct 2026:** 410x256 q25 probe 5.7 s; 961x600 q50 test
+17–19 s; hero 1922x1200 q95 68.3 s; plan 2242x1400 q95 117.3 s (unpinned
+landscape frame, ~60% cropped away later).
 
 **`elapsed_seconds` is time since submission, not reliable completed duration.**
 In the 18 September 2026 rehearsal, finished `render_1` reported 12.7 seconds,

@@ -94,8 +94,25 @@ def balloon(c, bx, by, px, py, text):
     c.setFillColorRGB(0, 0, 0)
 
 
+PLACEHOLDERS = ("<RUN DATE>", "<DOCUMENT NAME>")
+
+
+def check_filled(spec):
+    """Refuse a sheet whose run-specific fields were never filled in.
+
+    slab_sheet.json ships as a template; a stale date or model name on a sheet
+    that claims to be measured geometry is a silent correctness defect.
+    """
+    blob = json.dumps(spec.get("title_block", {}), ensure_ascii=False)
+    left = [p for p in PLACEHOLDERS if p in blob]
+    if left:
+        raise ValueError("sheet spec still contains template placeholders: "
+                         + ", ".join(left) + " - copy the JSON per run and fill them")
+
+
 # --------------------------------------------------------------------------
 def build(spec, out, views_dir):
+    check_filled(spec)
     S = spec["scale"]
     L = spec["layout"]
     V = spec["views"]

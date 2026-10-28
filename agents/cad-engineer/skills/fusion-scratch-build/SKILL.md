@@ -256,11 +256,14 @@ Also confirm the running body total against the budget, and at the end that the
 whole timeline is clean:
 
 ```python
-[(i, des.timeline.item(i).name)
+[(i, des.timeline.item(i).name, des.timeline.item(i).errorOrWarningMessage)
  for i in range(des.timeline.count)
- if des.timeline.item(i).entity is not None
- and int(des.timeline.item(i).entity.healthState) != 0]        # expect []
+ if int(des.timeline.item(i).healthState) != 0]        # expect []
 ```
+
+Read `healthState` on the timeline object, not on `.entity`: occurrence
+entries have no `healthState` and the entity form raises `AttributeError`
+(28 Oct 2026).
 
 `healthState 1` with "Profile reference is lost… using cached geometry" means a
 feature outlived its sketch. Bodies still exist and the count still looks right,
