@@ -40,6 +40,17 @@ handle pixels/PDFs, never product modeling decisions.
 
 ### Preflight code (verified 28 Oct 2026; paste, do not reinvent)
 
+Order: Step 1 query, then Step 3 save (it picks the name and run folder), then
+register the SU helpers **in a separate call**, then write BUILD_STATE.json with
+the values Step 3 returned. Do not choose the document name or run folder
+yourself before Step 3: `SLAB_TOP_v1…vN` may already exist in the cloud. Use
+`~/fusion-renders/<name>`, not a Temp folder.
+
+`execute_code` takes exactly one argument, `code`. There is no `timeout`,
+`wait` or `async` parameter; extra arguments are rejected before reaching
+Fusion. The request timeout is a client setting (Hermes:
+`mcp_servers.fusion360.timeout`, 360 recommended), not something a call can pass.
+
 Step 1, read-only (`execute_code`). Expect `DesignProductType`, an edit object of
 `adsk::fusion::Component`, and 0 occurrences, bodies and timeline items for a fresh run:
 
