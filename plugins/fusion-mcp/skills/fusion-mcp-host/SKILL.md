@@ -52,8 +52,9 @@ Avoid include_image on status; inspect the returned local image file.
 
 Native drawing: prefer the Drawing API through execute_code (fusion-2d-drawings
 §3a). The create_drawing tool forces per-component sheets and holds the main
-thread for minutes. Keep auto-dimension off: on SLAB it crashed acadm.crx behind a
-modal that ping cannot see. It is preview API and LAST Fusion action. Drawing activation is not sheet
+thread for minutes. The first drawing after a fresh build has crashed acadm.crx
+behind a modal that ping cannot see; follow the retry procedure in
+fusion-2d-drawings §3a. It is preview API and LAST Fusion action. Drawing activation is not sheet
 signoff. Follow fusion-2d-drawings. Never use export_drawing_pdf, and do not
 replace or restart the live add-in during a campaign.
 

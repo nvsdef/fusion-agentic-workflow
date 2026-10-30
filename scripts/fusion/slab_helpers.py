@@ -575,11 +575,14 @@ def capture_line_views(out_dir, target_cm, view_extents_cm, size=2200, views=Non
 
 # ---------------------------------------------------------------- native drawing
 
-def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True):
+def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True, open_drawing=True):
     """Two-sheet native drawing via the Drawing API. LAST Fusion action.
 
-    Main assembly only, first level, NO component sheets, auto-dimension OFF
-    (ON crashed acadm.crx c0000027 on SLAB). Writes timings to log_path
+    Main assembly only, first level, NO component sheets, auto-dimension OFF.
+    The FIRST drawing after a fresh build has crashed Fusion's drawing engine
+    (acadm.crx c0000027 popup, file still created); after the user clicks OK
+    and returns to the Design tab, calling this again has displayed it. See
+    fusion-2d-drawings §3a for the retry procedure. Writes timings to log_path
     before opening, because the MCP response can be lost once the Drawing is
     active. Afterwards the agent cannot see the drawing: ask the user to
     confirm it displayed with the parts list.
@@ -625,7 +628,10 @@ def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True):
     r['t_created'] = stamp()
     r['drawing'] = df.name if df else None
     w()
-    a.documents.open(df)
-    r['t_opened'] = stamp()
+    if open_drawing:
+        a.documents.open(df)
+        r['t_opened'] = stamp()
+    else:
+        r['opened'] = False   # user opens it from the Data Panel
     w()
     return r

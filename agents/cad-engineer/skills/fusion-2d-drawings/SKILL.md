@@ -246,7 +246,7 @@ g.isAnimationSheetGenerated = False
 g.isFlatPatternSheetGenerated = False
 g.isFoldedModelSheetGenerated = False
 g.isDetectAndOmitFasteners = True
-g.isAutoDimensionEnabled = False             # ON crashes acadm.crx on SLAB (see below)
+g.isAutoDimensionEnabled = False             # keep off; dimensions live on the A3 sheet
 m = di.automationPreferences.mainAssemblyPreferences
 m.isoViewSheetPreferences.isSheetCreated = True
 m.isoViewSheetPreferences.isPartsListIncluded = True
@@ -266,11 +266,29 @@ Do not read `app.activeProduct.productType` straight after opening: it raises
 views or parts lists, so file creation proves nothing about display. **Ask the
 user to confirm the drawing and parts list are on screen.**
 
-**Keep automatic dimensioning OFF.** With auto-dimension ON (plus parts list),
-Fusion's drawing engine raised `Exception in acadm.crx ARX Command — Unhandled
-Exception c0000027`. The drawing never displayed, although the file and its two
-sheets were created. That is a modal dialog the agent cannot see. Dimensions
-live on the composed A3 sheet, measured from geometry (§2).
+**Known Fusion fault: the first drawing after a fresh build can crash; the
+second attempt displays.** On 28–30 Oct 2026, the first native drawing created
+for a freshly built SLAB raised `Exception in acadm.crx ARX Command — Unhandled
+Exception c0000027 (c0000027h)` four times out of four (SLAB_TOP v7, v8, v12,
+v13). That held with auto-dimension on or off, created straight after the last
+save or 3 minutes later, and with the document unmodified. The file is still
+created (it shows in Fusion's job panel), but it does not display. After the
+user clicked OK, closed the drawing tab and returned to the Design tab,
+creating the same drawing again displayed it, with its parts list, two times
+out of two (v8 and v13). Root cause is not established; earlier notes blaming
+auto-dimension or upload timing were disproved by these tests.
+
+**Procedure** (the popup is modal and invisible to the agent):
+1. `S.native_drawing(log_path)`, then ask the user: *"Is the drawing on screen
+   with the parts list, or did an acadm.crx popup appear?"*
+2. If the popup appeared: ask the user to click **OK**, close the drawing tab
+   without saving, click the Design tab, and reply. Then run
+   `S.native_drawing(log_path)` **once more** with the same settings.
+3. If the second attempt also fails, stop and report; the composed A3 PDF is
+   the 2D deliverable.
+
+Auto-dimension stays off: dimensions live on the composed A3 sheet, measured
+from geometry (§2), and enabling it was never shown to be safe.
 
 ### 3b · Fallback: the `create_drawing` MCP tool
 
