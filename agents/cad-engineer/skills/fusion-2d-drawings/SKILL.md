@@ -216,6 +216,10 @@ Budget one fix round and check the whole page, not just the region you changed.
 
 ### 3a · Default: Drawing API through `execute_code` (tested 28 Oct 2026)
 
+**Call `S.native_drawing(run_dir + r'\drawing_log.json')`** from
+`scripts/fusion/slab_helpers.py`. It is this exact code. The block below
+documents the settings; do not retype it.
+
 Two sheets in the Drawing workspace: an isometric view with the **parts list**,
 and the orthogonal views. Main assembly only. Measured on SLAB: `createDrawing`
 19 s, open 5 s, no timeouts. Save the coloured model first; this is the last

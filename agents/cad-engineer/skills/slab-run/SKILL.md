@@ -41,46 +41,73 @@ The steps here are the FULL profile (resumable, audited).
    the live model. Observe supplied PDF and both reference images. Rev C skill
    dimensions govern over concept imagery; report discrepancies explicitly.
 
+### Failure rule (read first)
+
+The client blocks a tool after repeated failures (Hermes:
+`repeated_exact_failure_block`, shown as a "cooldown"). Every failure counts,
+including pings and retries during the cooldown. So:
+
+1. Use the helpers in `scripts/fusion/slab_helpers.py` for all API plumbing.
+   Never write your own version of a helper, and never guess an API path.
+2. When a call fails, read the **error text**, fix the cause from the skill or
+   the helper's docstring, and retry **once**.
+3. **Two failures on the same step: stop and report the exact error text to
+   the user.** Do not try variations.
+4. During a cooldown, make **no** MCP calls. Tell the user, and resume only in a
+   fresh conversation that starts with `SU.status()`.
+
 ### DEMO preflight: one call, then build
 
 The DEMO profile assumes the user has opened a **new, unsaved, empty Design**.
 Skip BUILD_STATE.json, `verify_layout.py`, and reading the PRD PDF or mockups
-(the spec skill governs; report image discrepancies only if asked). Do
-everything in **one** `execute_code` call: assert the state, save, create the
-run folder, register the helpers. Then go straight to class 1.
+(the spec skill governs; report image discrepancies only if asked). One
+`execute_code` call; `REPO` is the absolute path of this repository (the
+folder containing AGENTS.md):
 
 ```python
-import os, builtins, types
-d = design; root = d.rootComponent
-state = {'doc': app.activeDocument.name, 'product': app.activeProduct.productType,
-         'edit': d.activeEditObject.objectType, 'occ': root.occurrences.count,
-         'bodies': root.bRepBodies.count, 'timeline': d.timeline.count}
-assert (state['product'] == 'DesignProductType' and state['edit'] == 'adsk::fusion::Component'
-        and state['occ'] == 0 and state['bodies'] == 0 and state['timeline'] == 0), state
-SRC = r'''
-...paste slab-product-spec §1 and §1b code blocks here, verbatim...
-'''
-m = types.ModuleType('slabu'); exec(SRC, m.__dict__); builtins.SU = m
-prjs = app.data.activeHub.dataProjects
-proj = next((prjs.item(i) for i in range(prjs.count) if prjs.item(i).name == 'Default Project'), prjs.item(0))
-names = [proj.rootFolder.dataFiles.item(i).name for i in range(proj.rootFolder.dataFiles.count)]
-n = 1
-while 'SLAB_TOP_v%d' % n in names: n += 1
-name = 'SLAB_TOP_v%d' % n
-run_dir = os.path.join(os.path.expanduser('~'), 'fusion-renders', name)
-for sub in ('renders', 'views', 'tools'): os.makedirs(os.path.join(run_dir, sub), exist_ok=True)
-ok = app.activeDocument.saveAs(name, proj.rootFolder, 'SLAB - portable 6-channel production mixer', 'RevC')
-{'state': state, 'saved': ok, 'doc': app.activeDocument.name, 'run_dir': run_dir, 'SU': hasattr(builtins, 'SU')}
+import builtins, types
+REPO = r'C:\path\to\fusion-agentic-workflow'
+m = types.ModuleType('slabu')
+exec(open(REPO + r'\scripts\fusion\slab_helpers.py', encoding='utf-8').read(), m.__dict__)
+builtins.SU = m
+S = SU
+state = S.check_empty_design()            # raises if not a fresh empty Design: stop and tell the user
+saved = S.save_new('SLAB_TOP', description='SLAB - portable 6-channel production mixer', tag='RevC')
+{'state': state, 'saved': saved}          # keep saved['run_dir'] for every output path
 ```
 
-If the assertion fails, stop and tell the user what is open; do not clear it.
-If the call times out, the save is probably still landing: query
-`app.activeDocument.name` and `hasattr(builtins, 'SU')` once, and never call
-`saveAs` again. Pre-saving the empty document before an audience is watching
-removes the ~70 s save from the run. In that case, skip the `saveAs` lines,
-take `name` from `app.activeDocument.name`, and keep the rest.
+It takes 1–70 s (the cloud save). If the call times out, call `SU.status()`
+once (the doc name shows whether the save landed). Never call `save_new`
+twice. If the user pre-saved the empty Design, `save_new` keeps that name and
+only creates the run folder. Then go straight to class 1.
+
+### DEMO stage recipes (helpers do the plumbing; you do the geometry)
+
+| Stage | Calls (one `execute_code` per row unless noted) |
+|---|---|
+| 3 Build | Per class: `S = SU; S.guard()`, compose the class from slab-product-spec with `S.sketch/rect/circle/poly/bar/extrude/fillet_edges/shell`, measure, then `S.passed(component, bodies)` |
+| 3 Check | `S.status()`: 289 bodies, 12 components, `health` empty |
+| 4 CMF | The spec's "CMF code" block, once |
+| 5 Layout | Measure the five clearances from slab-product-spec §4 |
+| 6 Render setup | `S.render_setup(1700, 9.5)` then `S.perspective_camera(303, 46, 14, 152.0, (0, 0, 2.6))` |
+| 7 Hero | MCP `start_render(filename=run_dir + '\\renders\\hero_preview.png', height=900, quality=50, view='current', fit=False, resolution='custom')`, then `get_render_status` only until finished |
+| 8 Pads | `S.project_tops('SLAB_Keypad', run_dir + '\\tools\\hero_rois.json')` (after the render finishes), then host `scripts/pad_roi.py`; report once |
+| 9a Plan | `S.design_workspace()`, `S.ortho_camera((0,0,1), (0,1,0), (0,0,2.6), fit_margin=1.10)`, `S.viewport_capture(run_dir + '\\renders\\plan_viewport_capture.png', 920, 1400)` |
+| 9b Line art | Announce monochrome; `S.capture_line_views(run_dir + '\\views', (0, 0, 3.06), 38.0)`; host `make_views.py` and `make_drawing.py` on a filled copy of `slab_sheet.json` |
+| 9c Drawing | `S.native_drawing(run_dir + '\\drawing_log.json')`, LAST; then ask the user to confirm the drawing and parts list displayed |
+
+**A DEMO run is complete only with all of these**, each reported with its
+evidence; anything missing is reported as NOT DONE, never folded into "scope":
+289 bodies / 12 components / healthy; CMF assertion passed; five layout
+clearances; hero preview file (a real raytrace at preview quality); pad
+metrics from `pad_roi.py`; plan viewport capture; four line views; the A3
+PDF from `make_drawing.py`, raster-checked; native drawing confirmed on screen
+by the user. DEC-C3 uses the measured tallest Z, 61.150 (shortfall 17.150 mm).
 
 ### Preflight code, FULL profile (verified 28 Oct 2026; paste, do not reinvent)
+
+The helpers cover this too (`S.status()`, `S.save_new(...)`). The raw code
+below is kept for clients that cannot read files from the repository.
 
 Order: Step 1 query, then Step 3 save (it picks the name and run folder), then
 register the SU helpers **in a separate call**, then write BUILD_STATE.json with

@@ -50,6 +50,7 @@ One agent owns all dependent CAD stages. No sandbox deployment or hidden subagen
 | `mcp.lock.json` | Companion repository and immutable commit |
 | `pyproject.toml`, `uv.lock` | Locked host helper environment |
 | `scripts/` | Measurement/composition utilities and tests, no product builder (`pad_roi.py` pad metrics, `slab_sheet.json` sheet template) |
+| `scripts/fusion/slab_helpers.py` | Fusion API helpers the agent loads into Fusion once (save, sketch/feature vocabulary, appearances, cameras, captures, native drawing). No SLAB geometry; a test enforces it |
 | `docs/` | PRD, decisions, validation, release checklist; `docs/runs/` timed live-run logs |
 | `examples/01_slab_mixer/` | Prompt, acceptance reference, committed concept images |
 | `renders/`, `drawings/` | Historical example outputs, not fresh-run proof |

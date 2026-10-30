@@ -13,6 +13,8 @@ Use the client-discovered names, normally under server fusion360. The pinned com
 | set_scene_environment | Thin scene wrapper; inspect unsupported fields and read back applied settings. |
 | create_drawing | **Fallback only.** It forces a sheet per component (12+ sheets, minutes, timeouts). Default is the Drawing API through execute_code (fusion-2d-drawings §3a): 2 sheets, parts list, auto-dimension OFF, ~24 s. Cloud save first, LAST Fusion action, never blind-retry. Active Drawing is not sheet signoff; ask the user to confirm it displayed. |
 
+Inside Fusion, load `scripts/fusion/slab_helpers.py` once as `SU` (slab-product-spec §1) and use its functions for save, appearances, cameras, captures and the native drawing instead of writing raw API code. Two failures on one step: stop and report the error text.
+
 No automatic retry of uncertain mutations. Save before changes, query state after timeouts. Do not call export_drawing_pdf or assign backgroundEnvironment in this pipeline. Preserve calibrated camera and display state; announce monochrome drawing transitions.
 
 Host utilities: composite.py (postprocessing; its colour key leaks when the backdrop is not uniform, so inspect every output), measure_classes.py (diagnostic only), pad_roi.py (ten-pad acceptance metrics at projected ROIs), make_views.py (calibrated line crops), make_drawing.py plus a run-specific copy of the slab_sheet.json template (composed PDF; refuses unfilled `<RUN DATE>`/`<DOCUMENT NAME>`). Run with uv run python, or python3 in the Cowork sandbox. They do not build SLAB. PyMuPDF provides a Python rasterization option when Poppler is absent.

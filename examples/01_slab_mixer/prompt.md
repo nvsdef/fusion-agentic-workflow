@@ -6,7 +6,7 @@ Read `agents/cad-engineer/skills/slab-run/SKILL.md` first. Use the repository co
 
 Build SLAB, a portable 6-channel production mixer / USB-C audio interface, from the slab-product-spec skill:
 
-1. Preflight on an empty Design; register the spec §1/§1b helpers once; save to the cloud and create the run folder. If the save times out, query the document; do not retry.
+1. One-call preflight: load scripts/fusion/slab_helpers.py as SU, `S.check_empty_design()`, `S.save_new(...)`. If the save times out, call `S.status()`; never save twice.
 2. Build the twelve feature classes live, one class per `execute_code` call, each starting with `guard()` and printing its measured checks.
 3. Whole-model check, then configure ten appearances before assignment (body first, then faces), audit CMF, save.
 4. Measured layout check; announce the Render workspace; set exposure and the hero camera.

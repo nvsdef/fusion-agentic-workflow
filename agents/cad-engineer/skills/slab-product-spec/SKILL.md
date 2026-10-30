@@ -29,212 +29,49 @@ letterform blocks nothing downstream. Every other checksum halts.
 
 ---
 
-## 1 · API utilities
+## 1 · API utilities: `scripts/fusion/slab_helpers.py`
 
-They are how the Fusion API works, not what SLAB is — the equivalent of a
-utility module a human engineer would already have.
+The Fusion API plumbing lives in a **file**, not in this skill. Do not retype
+it, paste it from memory or write your own versions: local models that did so
+spent minutes and tripped the client's repeated-failure breaker on mistakes
+the file already avoids (lists vs ObjectCollection, cm vs mm, `saveAs`
+arguments, appearance property paths). The file holds **no SLAB geometry**
+(a test enforces it): every sketch, dimension and extrude below is still
+composed by you, one feature class per call.
 
-**Register them once per session, not once per call.** Local names do not
-survive between `execute_code` calls, but the `builtins` module does (verified
-28 Oct 2026, build 2705.1.11). So in the first call, `exec` this block into a
-module and publish it as `builtins.SU`; every later call starts with `S = SU`
-and uses `S.rect(...)`, `S.extrude(...)`. Inside the module, resolve
-`app`/`des`/`root` through a function on each use, never cache them at module
-level, because the active product changes when the document is saved or
-switched. This saves re-pasting ~3 KB on each of ~20 calls. It is still API
-vocabulary only: every sketch, dimension and extrude is composed in the call
-that builds the class. If `SU` is missing (Fusion restarted), register it again.
-
-**Registration, verbatim** (first call of the session, together with the cloud
-save; the code blocks below are the body of `SRC`):
+**Load it once per Fusion session** (it survives between `execute_code` calls
+through `builtins`; reload only if Fusion restarted). `REPO` is the absolute
+path of this repository, the folder that contains AGENTS.md:
 
 ```python
 import builtins, types
-SRC = r'''  ...the §1 block below, then the §1b block...  '''
-m = types.ModuleType('slabu'); exec(SRC, m.__dict__); builtins.SU = m
-# every later call:  S = SU; S.guard(); c = S.comp('SLAB_...') ...
+REPO = r'C:\path\to\fusion-agentic-workflow'
+m = types.ModuleType('slabu')
+exec(open(REPO + r'\scripts\fusion\slab_helpers.py', encoding='utf-8').read(), m.__dict__)
+builtins.SU = m
+SU.status()
 ```
 
-Before a fresh run in the same Fusion session, clear the guard state:
-`SU.EXPECT.clear()`.
+Every later call starts with `S = SU`. Arguments ending `_mm` or plain
+coordinates are **millimetres**; `_cm` arguments are centimetres.
+
+| Group | Functions |
+|---|---|
+| State | `S.status()` (read-only summary; use it to resume), `S.check_empty_design()`, `S.guard()` (first line of every class), `S.passed(component, bodies)` (after a PASS), `S.health()` |
+| Save | `S.save_new(prefix, description=, tag=)` → doc, data_file_id, run_dir (next free `<prefix>_vN`, run folder under `~/fusion-renders`); `S.save(label)` |
+| Sketch | `S.comp(name)`, `S.plane(c, z_mm)`, `S.sketch(c, z_mm, name, deferred=False)` + `S.done(sk)` → profile count, `S.rect(sk, cx, cy, w, h)`, `S.circle(sk, cx, cy, d)`, `S.poly(sk, [(x, y), ...])`, `S.bar(sk, cx, cy, angle_deg, r0, r1, w)`, `S.profile_extent(p)` |
+| Features | `S.extrude(c, profiles_or_sketch, h_mm, taper_deg=0, cut=False, name=None)` → ExtrudeFeature (bodies are `feature.bodies`), `S.fillet_edges(c, edges, r_mm)`, `S.shell(c, faces, wall_mm)`, `S.vertical_edges(b)`, `S.circles_above(c, z_mm)`, `S.face_at_z(b, z_mm)`, `S.coll(list)`, `S.allprof(sk)`, `S.reset_component(c)` |
+| Measure | `S.bbox(b)`, `S.cbbox(c)`, `S.radii(b)`, `S.top_area(b)`, `S.vol_cm3(b)` |
+| CMF | `S.make_appearance(name, rgb, roughness, f0, luminance=None, luminance_rgb=None)`, `S.find_appearance(name)`, `S.assign(body, ap)`, `S.assign_component(component, appearance)`, `S.comp_existing(name)`, `S.appearance_tally()` |
+| Render / views | `S.render_setup(brightness, camera_exposure)`, `S.design_workspace()`, `S.perspective_camera(az_deg, el_deg, fov_deg, dist_cm, target_cm)`, `S.ortho_camera(direction, up, target_cm, view_extents_cm=None, fit_margin=None)`, `S.project_tops(component, out_json)`, `S.viewport_capture(path, w, h)`, `S.capture_line_views(out_dir, target_cm, view_extents_cm)` |
+| Drawing | `S.native_drawing(log_path)`: LAST Fusion action, two sheets, parts list, auto-dimension off |
+
+Each function's docstring states its units and pitfalls; read the file if a
+call surprises you, rather than guessing a replacement.
 
 Naming: inside an `execute_code` call the active design is pre-bound as
-`design`. Snippets elsewhere in these skills that write `des.appearances`,
-`des.timeline`, `des.renderManager` mean that object (`des = design`). Inside the
-registered module, use the function `des()`.
-
-```python
-import adsk.core, adsk.fusion, math
-V  = adsk.core.ValueInput.createByReal
-P3 = adsk.core.Point3D.create
-MM = lambda v: v / 10.0        # THE API IS IN CENTIMETRES. Every spec number is mm.
-
-def des():                     # resolve on every use; never cache the product
-    return adsk.fusion.Design.cast(adsk.core.Application.get().activeProduct)
-
-def comp(name):                # get-or-make: never fork a second component
-    root = des().rootComponent
-    for o in root.occurrences:
-        if o.component.name == name: return o.component
-    o = root.occurrences.addNewComponent(adsk.core.Matrix3D.create())
-    o.component.name = name
-    return o.component
-
-def plane(c, z_mm):            # ALWAYS from the component XY plane, absolute Z
-    pi = c.constructionPlanes.createInput()
-    pi.setByOffset(c.xYConstructionPlane, V(MM(z_mm)))
-    return c.constructionPlanes.add(pi)
-
-def allprof(sk):
-    pf = adsk.core.ObjectCollection.create()
-    for p in sk.profiles: pf.add(p)
-    return pf
-
-def extrude(c, profs, h_mm, taper_deg=0.0, cut=False):
-    op = (adsk.fusion.FeatureOperations.CutFeatureOperation if cut
-          else adsk.fusion.FeatureOperations.NewBodyFeatureOperation)
-    ei = c.features.extrudeFeatures.createInput(profs, op)
-    d  = adsk.fusion.DistanceExtentDefinition.create(V(MM(abs(h_mm))))
-    dr = (adsk.fusion.ExtentDirections.NegativeExtentDirection if h_mm < 0
-          else adsk.fusion.ExtentDirections.PositiveExtentDirection)
-    if taper_deg: ei.setOneSideExtent(d, dr, V(math.radians(taper_deg)))
-    else:         ei.setOneSideExtent(d, dr)
-    return c.features.extrudeFeatures.add(ei)
-
-def fillet_edges(c, edges, r_mm):
-    fi = c.features.filletFeatures.createInput(); fi.isRollingBallCorner = True
-    fi.addConstantRadiusEdgeSet(edges, V(MM(r_mm)), True)
-    return c.features.filletFeatures.add(fi)
-
-def vertical_edges(b):         # the 4 side edges of an extruded rectangle
-    ed = adsk.core.ObjectCollection.create()
-    for e in b.edges:
-        g = e.geometry
-        if g.objectType == adsk.core.Line3D.classType():
-            d = g.startPoint.vectorTo(g.endPoint)
-            if abs(d.x) < 1e-6 and abs(d.y) < 1e-6: ed.add(e)
-    return ed
-
-def circles_above(c, z_mm, tol=0.001):    # circular edges at/above a Z, for fillets
-    ed = adsk.core.ObjectCollection.create()
-    for b in c.bRepBodies:
-        for e in b.edges:
-            g = e.geometry
-            if (g.objectType == adsk.core.Circle3D.classType()
-                and g.center.z > MM(z_mm) - tol): ed.add(e)
-    return ed
-
-def face_at_z(b, z_mm):        # planar horizontal face, for shelling
-    fs = adsk.core.ObjectCollection.create()
-    for f in b.faces:
-        g = f.geometry
-        if (g.objectType == adsk.core.Plane.classType()
-            and abs(g.normal.z) > 0.99 and abs(g.origin.z - MM(z_mm)) < 1e-4): fs.add(f)
-    return fs
-
-def shell(c, faces, wall_mm):
-    si = c.features.shellFeatures.createInput(faces, False)
-    si.insideThickness = V(MM(wall_mm))
-    return c.features.shellFeatures.add(si)
-
-def rect(sk, cx, cy, w, h):    # centre + size. USE THIS, never the raw API call.
-    # addCenterPointRectangle's 2nd argument is an ABSOLUTE CORNER, not a
-    # half-size. Passing (cx + w/2, h/2) silently drops the centre Y and you get
-    # a rectangle of the wrong length in the right place. This wraps it.
-    sk.sketchCurves.sketchLines.addCenterPointRectangle(
-        P3(MM(cx), MM(cy), 0), P3(MM(cx + w/2.0), MM(cy + h/2.0), 0))
-
-def circle(sk, cx, cy, d):     # centre + DIAMETER (the spec quotes diameters)
-    sk.sketchCurves.sketchCircles.addByCenterRadius(P3(MM(cx), MM(cy), 0), MM(d/2.0))
-
-def bar(sk, cx, cy, angle_deg, r0, r1, w):
-    # ROTATED RECTANGLE — the vocabulary for every stroke that is NOT axis
-    # aligned: graduation ticks, legend strokes, waveform bars. Angle is
-    # measured FROM +Y, positive toward +X. Spans radius r0 -> r1, width w.
-    a   = math.radians(angle_deg)
-    rad = (-math.sin(a), math.cos(a))          # along the stroke, outward
-    tan = ( math.cos(a), math.sin(a))          # across the stroke
-    pts = [P3(MM(cx + rad[0]*r + tan[0]*s*w/2.0),
-              MM(cy + rad[1]*r + tan[1]*s*w/2.0), 0)
-           for r, s in ((r0, -1), (r1, -1), (r1, 1), (r0, 1))]
-    for i in range(4):
-        sk.sketchCurves.sketchLines.addByTwoPoints(pts[i], pts[(i+1) % 4])
-
-def profile_extent(p):         # mm — check a profile is where you meant it
-    bb = p.boundingBox
-    return [round(bb.minPoint.x*10, 2), round(bb.minPoint.y*10, 2),
-            round(bb.maxPoint.x*10, 2), round(bb.maxPoint.y*10, 2)]
-
-def reset_component(c):        # MAKE EVERY CLASS RE-RUNNABLE. Call it first.
-    for f in reversed(list(c.features)):
-        try: f.deleteMe()
-        except Exception: pass
-    for b in list(c.bRepBodies):
-        try: b.deleteMe()
-        except Exception: pass
-    for sk in list(c.sketches):
-        try: sk.deleteMe()
-        except Exception: pass
-    for pl in list(c.constructionPlanes):
-        try: pl.deleteMe()
-        except Exception: pass
-    return c.bRepBodies.count          # must be 0
-
-def bbox(b):                   # mm — the primary checksum for every class
-    x = b.boundingBox
-    return [round(v*10, 3) for v in (x.minPoint.x, x.minPoint.y, x.minPoint.z,
-                                     x.maxPoint.x, x.maxPoint.y, x.maxPoint.z)]
-
-def radii(b):                  # circular edge radii by Z — the taper check
-    return sorted([[round(e.geometry.center.z*10, 2), round(e.geometry.radius*10, 3)]
-                   for e in b.edges if e.geometry.objectType == 'adsk::core::Circle3D'])
-
-def top_area(b):               # largest horizontal planar face, mm^2
-    return round(max([f.area*100 for f in b.faces
-                      if f.geometry.surfaceType == 0
-                      and abs(f.geometry.normal.z) > 0.99] + [0]), 1)
-```
-
-### 1b · Run helpers (register with §1)
-
-Used by every class in the 28 Oct 2026 runs. `poly` builds a closed polyline
-from shared sketch points (letterforms, ticks); `guard` is rule R9a.
-
-```python
-def coll(items):               # ObjectCollection from a Python list
-    pf = adsk.core.ObjectCollection.create()
-    for p in items: pf.add(p)
-    return pf
-
-def poly(sk, pts_mm):          # closed polyline, endpoints shared -> always 1 loop
-    L = sk.sketchCurves.sketchLines
-    P = [P3(MM(x), MM(y), 0) for x, y in pts_mm]
-    first = L.addByTwoPoints(P[0], P[1]); prev = first
-    for i in range(1, len(P) - 1):
-        prev = L.addByTwoPoints(prev.endSketchPoint, P[i + 1])
-    L.addByTwoPoints(prev.endSketchPoint, first.startSketchPoint)
-
-def cbbox(c):                  # component bbox, mm
-    bb = [bbox(b) for b in c.bRepBodies]
-    return [min(v[i] for v in bb) for i in range(3)] + [max(v[i] for v in bb) for i in range(3, 6)]
-
-def health():                  # timeline object state; entity.healthState raises on occurrences
-    tl = des().timeline
-    return [(i, tl.item(i).name) for i in range(tl.count)
-            if int(tl.item(i).healthState) != 0]           # expect []
-
-EXPECT = {}                    # component -> body count, set after each PASS
-def guard():                   # first line of every class call (R9a)
-    d = des()
-    assert d.activeEditObject.objectType == 'adsk::fusion::Component', 'GUI edit open'
-    have = {o.component.name: o.component.bRepBodies.count for o in d.rootComponent.occurrences}
-    lost = {k: (v, have.get(k)) for k, v in EXPECT.items() if have.get(k) != v}
-    assert not lost, 'previously passed classes changed: %r' % lost
-```
-
-After a class passes, record it: `S.EXPECT['SLAB_Keypad'] = 10`. The 11
-component entries sum to 289 when the build is complete (the root is the 12th
-component and holds no bodies).
+`design`. Snippets in these skills that write `des.appearances`,
+`des.timeline` or `des.renderManager` mean that object.
 
 ### The four accessors that get guessed wrong
 
@@ -356,7 +193,7 @@ S = SU; S.guard()              # no GUI edit open, earlier classes intact (R9a)
 c = S.comp('SLAB_Housing_Upper')
 if c.bRepBodies.count: S.reset_component(c)
 # ... build, measure ...
-if PASS: S.EXPECT['SLAB_Housing_Upper'] = 1
+if PASS: S.passed('SLAB_Housing_Upper', 1)
 ```
 
 **R9a — Guard the classes you already built.** The first line above, plus a
@@ -582,10 +419,9 @@ over **250 deg** (-125 to +125).
 1. Sketch on `plane(c, 45.6)`, then turn deferred compute on **on the sketch
    object** (it is a Sketch property, not a `sketches.add()` argument):
    ```python
-   sk = c.sketches.add(S.plane(c, 45.6)); sk.name = 'SK_Ticks'
-   sk.isComputeDeferred = True
-   # ... draw all 173 bars ...
-   sk.isComputeDeferred = False
+   sk = S.sketch(c, 45.6, 'SK_Ticks', deferred=True)   # sets sk.isComputeDeferred
+   # ... S.bar(...) for all 173 bars ...
+   n = S.done(sk)                                       # back to False; returns profile count
    ```
    Without it the 173 polylines took over 2 minutes; with it, 4 s.
 2. For each knob centre and each angle, draw a **4-point closed polyline**. For
@@ -819,55 +655,50 @@ inlays (-> `SLAB_Knob_Black`); the other 20 are `SLAB_Pointer_White`.
 
 ### CMF code (verified 28 Oct 2026, ~8 s for 289 bodies; paste, do not reinvent)
 
-Appearances live on the **Design** (`design.appearances`), the library on
-`app.materialLibraries`, properties on `appearance.appearanceProperties`. Not
-`sceneSettings`, not `definition.properties`. One `execute_code` call:
+One `execute_code` call, run **once** on a model with no `SLAB_*` appearances
+(`S.status()['slab_appearances']` must be empty; `make_appearance` refuses
+duplicates). If it times out, call `S.appearance_tally()`; do not re-run it.
 
 ```python
+S = SU
 CMF = {'SLAB_Gray_Flat': ((196,196,196),0.50,0.040), 'SLAB_Black_Semi': ((48,48,50),0.38,0.055),
        'SLAB_Panel_Dark': ((78,78,82),0.60,0.042), 'SLAB_Knob_Black': ((42,42,44),0.30,0.058),
        'SLAB_Knob_Orange': ((252,108,64),0.34,0.050), 'SLAB_LED_Emissive': ((255,122,48),0.26,0.050),
        'SLAB_Print_Ink': ((58,58,62),0.70,0.035), 'SLAB_Pointer_White': ((212,212,212),0.50,0.045),
        'SLAB_Toggle_Gray': ((200,200,200),0.35,0.050), 'SLAB_Tick_Print': ((92,46,22),0.62,0.040)}
-src = app.materialLibraries.itemByName('Fusion Appearance Library').appearances.itemByName('Plastic - Glossy (Black)')
-aps = design.appearances; A = {}
 for n, (rgb, ro, f0) in CMF.items():
-    ap = aps.addByCopy(src, n); P = ap.appearanceProperties
-    col = adsk.core.Color.create(rgb[0], rgb[1], rgb[2], 255)
-    P.itemById('surface_albedo').value = col; P.itemById('opaque_albedo').value = col
-    P.itemById('surface_roughness').value = ro; P.itemById('opaque_f0').value = f0
     if n == 'SLAB_LED_Emissive':
-        P.itemById('opaque_emission').value = True
-        P.itemById('opaque_luminance').value = 150.0
-        P.itemById('opaque_luminance_modifier').value = adsk.core.Color.create(255, 140, 70, 255)
-    A[n] = ap
-cs = {o.component.name: o.component for o in design.rootComponent.occurrences}
-plan = {'SLAB_Housing_Upper': 'SLAB_Gray_Flat', 'SLAB_Housing_Base': 'SLAB_Black_Semi',
-        'SLAB_Panel_Control': 'SLAB_Panel_Dark', 'SLAB_Knob_Small': 'SLAB_Knob_Black',
-        'SLAB_Panel_Ticks': 'SLAB_Knob_Black', 'SLAB_Knob_Large': 'SLAB_Knob_Orange',
-        'SLAB_LED_Indicators': 'SLAB_Knob_Orange', 'SLAB_Keypad': 'SLAB_LED_Emissive',
-        'SLAB_Panel_Graphics': 'SLAB_Print_Ink'}
-def assign(b, ap):                       # body FIRST, then only faces that still differ
-    b.appearance = ap
-    for f in b.faces:
-        if f.appearance is not None and f.appearance.name != ap.name: f.appearance = ap
-for cn, an in plan.items():
-    for b in cs[cn].bRepBodies: assign(b, A[an])
-for b in cs['SLAB_Knob_Pointers'].bRepBodies:
-    assign(b, A['SLAB_Knob_Black' if b.boundingBox.maxPoint.y < 0 else 'SLAB_Pointer_White'])
-for b in cs['SLAB_Power_Switch'].bRepBodies:
-    assign(b, A['SLAB_Toggle_Gray' if b.name == 'Power_Toggle' else 'SLAB_LED_Emissive'])
-tally = {}
-for c in cs.values():
-    for b in c.bRepBodies: tally[b.appearance.name] = tally.get(b.appearance.name, 0) + 1
-tally   # expect Gray_Flat 1, Black_Semi 5, Panel_Dark 1, Knob_Black 196, Knob_Orange 4,
-        # LED_Emissive 11, Pointer_White 20, Toggle_Gray 1, Print_Ink 50  (total 289)
+        S.make_appearance(n, rgb, ro, f0, luminance=150.0, luminance_rgb=(255, 140, 70))
+    else:
+        S.make_appearance(n, rgb, ro, f0)
+for cn, an in {'SLAB_Housing_Upper': 'SLAB_Gray_Flat', 'SLAB_Housing_Base': 'SLAB_Black_Semi',
+               'SLAB_Panel_Control': 'SLAB_Panel_Dark', 'SLAB_Knob_Small': 'SLAB_Knob_Black',
+               'SLAB_Panel_Ticks': 'SLAB_Knob_Black', 'SLAB_Knob_Large': 'SLAB_Knob_Orange',
+               'SLAB_LED_Indicators': 'SLAB_Knob_Orange', 'SLAB_Keypad': 'SLAB_LED_Emissive',
+               'SLAB_Panel_Graphics': 'SLAB_Print_Ink'}.items():
+    S.assign_component(cn, an)
+black, white = S.find_appearance('SLAB_Knob_Black'), S.find_appearance('SLAB_Pointer_White')
+for b in S.comp_existing('SLAB_Knob_Pointers').bRepBodies:
+    S.assign(b, black if b.boundingBox.maxPoint.y < 0 else white)
+for b in S.comp_existing('SLAB_Power_Switch').bRepBodies:
+    S.assign(b, S.find_appearance('SLAB_Toggle_Gray' if b.name == 'Power_Toggle' else 'SLAB_LED_Emissive'))
+t = S.appearance_tally()
+EXPECTED = {'SLAB_Gray_Flat': 1, 'SLAB_Black_Semi': 5, 'SLAB_Panel_Dark': 1, 'SLAB_Knob_Black': 196,
+            'SLAB_Knob_Orange': 4, 'SLAB_LED_Emissive': 11, 'SLAB_Pointer_White': 20,
+            'SLAB_Toggle_Gray': 1, 'SLAB_Print_Ink': 50}
+assert t['tally'] == EXPECTED and t['face_overrides'] == 0, ('CMF FAIL', t['tally'], t['face_overrides'])
+S.save('CMF applied')
+t
 ```
 
-It relies on the body names `Power_Toggle` and the component names above; if
-your build used different names, fix the names, not the mapping. Run it
-**once** on a model with no `SLAB_*` appearances yet; a second run would
-create duplicates. If it times out, query the tally rather than re-running it.
+**The assertion is the CMF check: do not report CMF as PASS without it.**
+On 30 Oct 2026 a local model mapped `SLAB_LED_Indicators` (the divider rules)
+to `SLAB_LED_Emissive` by name and reported "all correct" with Knob_Orange 3 /
+LED_Emissive 12. The dividers are **orange** (`SLAB_Knob_Orange`); only the 10
+pads and the power LED are emissive.
+
+It relies on the component names above and the body name `Power_Toggle`. If
+your build used different names, fix the names, not the mapping.
 
 **Do not tune an applied appearance during rendering.** On 28 Oct 2026 the first
 write to the applied `SLAB_LED_Emissive` did not fork; the second did, the
