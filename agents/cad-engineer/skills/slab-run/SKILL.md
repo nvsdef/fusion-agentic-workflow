@@ -12,7 +12,10 @@ handle pixels/PDFs, never product modeling decisions.
 
 ## Preflight and state
 
-1. Confirm host-local MCP discovery and active Design with a read-only query.
+1. Load `fusion-mcp-driving` section 0 BEFORE the first identity query. Use
+   `app.activeDocument.name` and `app.activeDocument.dataFile`, never
+   `design.name`, `design.dataFile` or speculative Product accessors.
+   Confirm host-local MCP discovery and active Design with that read-only query.
    `ping` only proves transport. A Drawing/No active design error means select
    the Design tab; do not blindly create a new document or retry writes.
 2. Read BUILD_STATE.json if present. Compare document/cloud ID and completed
@@ -77,8 +80,10 @@ After each class, append to `completed_classes` and set `bodies`.
 **If the same call fails twice, stop and re-read this skill rather than trying
 variations.** Hermes blocks a tool after about 5 identical failures
 (`repeated_exact_failure_block`). It reports this as a cooldown; it is a
-harness guardrail, not a Fusion or MCP fault, and waiting or pinging does not
-fix the cause.
+harness guardrail, not a Fusion or MCP fault. Waiting does not fix the
+cause: correct the call from this skill or fusion-mcp-driving §0 first, then
+follow the cooldown protocol there (wait the full interval, one ping, one
+corrected read-only query).
 
 ## Stages
 

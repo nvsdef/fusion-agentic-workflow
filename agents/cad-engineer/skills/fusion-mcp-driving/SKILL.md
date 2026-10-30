@@ -14,6 +14,100 @@ call signature and method it states. Verified on build 2705.1.11
 
 ---
 
+## 0 · Document identity: use Document, not Design
+
+For preflight use this read-only query. These accessors worked in the live
+SLAB rehearsal. `name`, `dataFile` and save/saveAs belong to Document;
+`rootComponent`, `designType`, timeline and userParameters belong to Design.
+`app.activeProduct` may itself be Design: avoiding a cast does not turn it
+into a Document. Do not guess `design.name`, `design.dataFile`,
+`design.product.name`, or use `design.id` as cloud-file identity.
+
+```python
+doc = app.activeDocument
+assert doc is not None, 'No active document; open a Design tab'
+product = app.activeProduct
+root = design.rootComponent
+file = doc.dataFile
+{
+    'document': doc.name,
+    'active_product_type': product.productType if product else None,
+    'saved': file is not None,
+    'data_file_id': file.id if file else None,
+    'root_bodies': root.bRepBodies.count,
+    'occurrences': root.occurrences.count,
+    'occurrence_bodies': sum(o.component.bRepBodies.count
+                             for o in root.allOccurrences),
+    'timeline_features': design.timeline.count,
+}
+```
+
+If the MCP wrapper cannot bind Design because Drawing is active, stop and
+request the Design tab; this snippet cannot bypass that wrapper.
+
+### Errors and cooldowns
+
+An AttributeError traceback proves that request reached Python; it does not
+prove the server is currently reachable after a later error. Fix the named
+accessor using this reference before another call. Do not cycle through
+speculative names or load every later-stage skill to wait out a cooldown.
+
+If the client explicitly reports a circuit-breaker cooldown, make no MCP calls
+until the full reported interval has actually elapsed. Reading files is not a
+timer. Use a timed terminal wait where available, then one transport ping and
+one corrected read-only query if transport succeeds. If the breaker persists,
+stop probing and report the actual tool response. Do not invent remaining time,
+reset the client, or replay save/build mutations. A success response from an
+old call is historical evidence, not current liveness.
+
+## 0b · Sketch diagnostics: keep units and coordinate spaces explicit
+
+A SketchLine is not a core Line3D. Use
+`line.startSketchPoint.geometry` and `line.endSketchPoint.geometry` for its
+stored endpoints in SKETCH coordinates, then `sk.sketchToModelSpace(point)`
+for model-space reporting. Do not guess `line.startPoint`, `plane.origin`,
+or `plane.normal`. Raw Point3D numbers and transform results are centimetres.
+For example -9.75 cm = -97.5 mm; that is the left wall, not the cavity.
+`modelToSketchSpace` changes coordinates; it does not move the sketch plane.
+Do not assume an off-plane input becomes a correctly located planar rectangle.
+
+Read-only diagnostic recipe, AFTER a cooldown has actually expired and only
+if the tool is not halted. Resolve the existing named sketch/component first;
+never create geometry to inspect geometry:
+
+```python
+# c: existing owning component; sk: existing port sketch
+rows = []
+for line in sk.sketchCurves.sketchLines:
+    ends = []
+    for point in (line.startSketchPoint, line.endSketchPoint):
+        p = sk.sketchToModelSpace(point.geometry)
+        ends.append([p.x * 10, p.y * 10, p.z * 10])
+    rows.append(ends)
+p0 = sk.sketchToModelSpace(adsk.core.Point3D.create(0, 0, 0))
+p1 = sk.sketchToModelSpace(adsk.core.Point3D.create(0, 0, 1))
+{
+    'sketch_name': sk.name,
+    'stored_line_endpoints_mm': rows,
+    'origin_mm': [p0.x * 10, p0.y * 10, p0.z * 10],
+    'positive_sketch_z_vector': [p1.x-p0.x, p1.y-p0.y, p1.z-p0.z],
+    'profiles': sk.profiles.count,
+}
+```
+
+Interpret the coordinate frame with the component/occurrence transform; the
+SLAB reference uses identity occurrences. Do not confuse local component
+coordinates with assembly-world coordinates in a transformed assembly.
+
+Two failed directions do not uniquely prove wrong placement. Check units,
+actual curves, body location, profile validity and target/component context.
+Do not enlarge the cut to search for a wall or assume correct removed volume
+proves correct location. A tool-call halt is not a fresh repair budget: record
+the halt and stop. Do not switch to a raw socket/terminal or another tool to
+circumvent it; resume only after an authorized reset/new session and a read-only
+state reconciliation. Do not reclassify repeated port attempts as a new class
+merely to evade the bounded repair budget.
+
 ## 1 · Pass the arguments that actually steer the tool
 
 Several tools have a parameter that selects between "use what I set up" and "use

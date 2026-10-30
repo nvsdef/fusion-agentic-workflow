@@ -464,7 +464,35 @@ steps inward. Their heights differ by design — do not make them uniform.
    **X -97.5**. Two rectangles **9.5 (Y) x 4.0 (Z)** at Y **-38.0** and
    **-16.0**, centred **Z 13.5**. Extrude **+4.0 as a cut** (into the wall).
    Use `sk.modelToSketchSpace()` to place them so the sketch's own axes need no
-   reasoning about.
+   reasoning about. **Its Point3D input is in cm, not mm.** For the first port,
+   the model-space opposite corners are (-9.75,-4.275,1.15) and
+   (-9.75,-3.325,1.55) cm; the second uses Y -2.075 and -1.125 cm.
+   Do not pass `P3(-97.5, yy, zz)` when P3 is the raw API constructor.
+
+   Before cutting, prove the actual sketch geometry in the component frame.
+   For these untransformed SLAB components, map each rectangle line's start/end
+   `.geometry` point using `sk.sketchToModelSpace()`, then multiply by 10 for
+   reporting. Expected per-port extents [xmin,ymin,zmin,xmax,ymax,zmax] mm:
+   [-97.5,-42.75,11.5,-97.5,-33.25,15.5] and
+   [-97.5,-20.75,11.5,-97.5,-11.25,15.5]. Check both profile areas38 mm².
+   Mapping the intended input points back is insufficient; inspect the actual
+   stored sketch curves. Do not feed already-converted sketch coordinates
+   through the mm-based rect() helper (that would divide them by ten again).
+
+   Determine sketch +normal in component space with the difference between
+   `sk.sketchToModelSpace(P3(0,0,1))` and
+   `sk.sketchToModelSpace(P3(0,0,0))`. Check it is parallel to X and select the
+   extent direction that advances toward +X into the left wall. Do not guess
+   `ConstructionPlane.normal` or invent `.featureType` diagnostics. The
+   successful reference used +4 mm from the intended plane; a new failed run
+   does not prove that direction is wrong.
+
+   No-target-body errors can come from units, placement, direction or component
+   context. Diagnose before retrying. Do not implement try-positive/try-negative
+   mutations in one call as a substitute for measurement. Query actual state
+   after failures; an exception alone is not proof that no feature remains.
+   Verify190 mm³ removal AND correct port locations/shape; an equally sized
+   cut elsewhere can remove the same volume. Preserve the completed base/feet.
 
 > after shell **209.947 cm3** · bbox `[-97.5, -170.0, 3.5, 97.5, 170.0, 23.0]`
 > · ports remove **190.0 mm3** · 5 bodies
