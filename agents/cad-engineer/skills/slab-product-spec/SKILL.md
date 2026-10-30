@@ -579,7 +579,15 @@ over **250 deg** (-125 to +125).
 | Small knobs | 7 | 8.75 -> 11.25 | 250/6 deg | 20 x 7 = **140** |
 | Large knobs | 11 | 18 -> 21.5 | 25 deg | 3 x 11 = **33** |
 
-1. Sketch on `plane(c, 45.6)`, `isComputeDeferred = True`.
+1. Sketch on `plane(c, 45.6)`, then turn deferred compute on **on the sketch
+   object** (it is a Sketch property, not a `sketches.add()` argument):
+   ```python
+   sk = c.sketches.add(S.plane(c, 45.6)); sk.name = 'SK_Ticks'
+   sk.isComputeDeferred = True
+   # ... draw all 173 bars ...
+   sk.isComputeDeferred = False
+   ```
+   Without it the 173 polylines took over 2 minutes; with it, 4 s.
 2. For each knob centre and each angle, draw a **4-point closed polyline**. For
    angle `a` from +Y: radial unit = `(-sin a, cos a)`, tangential unit =
    `(cos a, sin a)`. The four corners are
@@ -808,6 +816,58 @@ inlays (-> `SLAB_Knob_Black`); the other 20 are `SLAB_Pointer_White`.
 > End state: **11 appearances** (ten `SLAB_*` + the document default
 > `Steel - Satin`; `addByCopy` from the library does not add the source), zero
 > duplicates, zero bodies without an appearance, zero stray face overrides
+
+### CMF code (verified 28 Oct 2026, ~8 s for 289 bodies; paste, do not reinvent)
+
+Appearances live on the **Design** (`design.appearances`), the library on
+`app.materialLibraries`, properties on `appearance.appearanceProperties`. Not
+`sceneSettings`, not `definition.properties`. One `execute_code` call:
+
+```python
+CMF = {'SLAB_Gray_Flat': ((196,196,196),0.50,0.040), 'SLAB_Black_Semi': ((48,48,50),0.38,0.055),
+       'SLAB_Panel_Dark': ((78,78,82),0.60,0.042), 'SLAB_Knob_Black': ((42,42,44),0.30,0.058),
+       'SLAB_Knob_Orange': ((252,108,64),0.34,0.050), 'SLAB_LED_Emissive': ((255,122,48),0.26,0.050),
+       'SLAB_Print_Ink': ((58,58,62),0.70,0.035), 'SLAB_Pointer_White': ((212,212,212),0.50,0.045),
+       'SLAB_Toggle_Gray': ((200,200,200),0.35,0.050), 'SLAB_Tick_Print': ((92,46,22),0.62,0.040)}
+src = app.materialLibraries.itemByName('Fusion Appearance Library').appearances.itemByName('Plastic - Glossy (Black)')
+aps = design.appearances; A = {}
+for n, (rgb, ro, f0) in CMF.items():
+    ap = aps.addByCopy(src, n); P = ap.appearanceProperties
+    col = adsk.core.Color.create(rgb[0], rgb[1], rgb[2], 255)
+    P.itemById('surface_albedo').value = col; P.itemById('opaque_albedo').value = col
+    P.itemById('surface_roughness').value = ro; P.itemById('opaque_f0').value = f0
+    if n == 'SLAB_LED_Emissive':
+        P.itemById('opaque_emission').value = True
+        P.itemById('opaque_luminance').value = 150.0
+        P.itemById('opaque_luminance_modifier').value = adsk.core.Color.create(255, 140, 70, 255)
+    A[n] = ap
+cs = {o.component.name: o.component for o in design.rootComponent.occurrences}
+plan = {'SLAB_Housing_Upper': 'SLAB_Gray_Flat', 'SLAB_Housing_Base': 'SLAB_Black_Semi',
+        'SLAB_Panel_Control': 'SLAB_Panel_Dark', 'SLAB_Knob_Small': 'SLAB_Knob_Black',
+        'SLAB_Panel_Ticks': 'SLAB_Knob_Black', 'SLAB_Knob_Large': 'SLAB_Knob_Orange',
+        'SLAB_LED_Indicators': 'SLAB_Knob_Orange', 'SLAB_Keypad': 'SLAB_LED_Emissive',
+        'SLAB_Panel_Graphics': 'SLAB_Print_Ink'}
+def assign(b, ap):                       # body FIRST, then only faces that still differ
+    b.appearance = ap
+    for f in b.faces:
+        if f.appearance is not None and f.appearance.name != ap.name: f.appearance = ap
+for cn, an in plan.items():
+    for b in cs[cn].bRepBodies: assign(b, A[an])
+for b in cs['SLAB_Knob_Pointers'].bRepBodies:
+    assign(b, A['SLAB_Knob_Black' if b.boundingBox.maxPoint.y < 0 else 'SLAB_Pointer_White'])
+for b in cs['SLAB_Power_Switch'].bRepBodies:
+    assign(b, A['SLAB_Toggle_Gray' if b.name == 'Power_Toggle' else 'SLAB_LED_Emissive'])
+tally = {}
+for c in cs.values():
+    for b in c.bRepBodies: tally[b.appearance.name] = tally.get(b.appearance.name, 0) + 1
+tally   # expect Gray_Flat 1, Black_Semi 5, Panel_Dark 1, Knob_Black 196, Knob_Orange 4,
+        # LED_Emissive 11, Pointer_White 20, Toggle_Gray 1, Print_Ink 50  (total 289)
+```
+
+It relies on the body names `Power_Toggle` and the component names above; if
+your build used different names, fix the names, not the mapping. Run it
+**once** on a model with no `SLAB_*` appearances yet; a second run would
+create duplicates. If it times out, query the tally rather than re-running it.
 
 **Do not tune an applied appearance during rendering.** On 28 Oct 2026 the first
 write to the applied `SLAB_LED_Emissive` did not fork; the second did, the
