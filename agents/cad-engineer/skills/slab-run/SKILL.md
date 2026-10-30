@@ -35,6 +35,51 @@ handle pixels/PDFs, never product modeling decisions.
    the live model. Observe supplied PDF and both reference images. Rev C skill
    dimensions govern over concept imagery; report discrepancies explicitly.
 
+### Preflight code (verified 28 Oct 2026; paste, do not reinvent)
+
+Step 1, read-only (`execute_code`). Expect `DesignProductType`, an edit object of
+`adsk::fusion::Component`, and 0 occurrences, bodies and timeline items for a fresh run:
+
+```python
+root = design.rootComponent
+{'doc': app.activeDocument.name, 'saved': app.activeDocument.isSaved,
+ 'product': app.activeProduct.productType, 'edit': design.activeEditObject.objectType,
+ 'occ': root.occurrences.count, 'bodies': root.bRepBodies.count, 'timeline': design.timeline.count}
+```
+
+Step 3, cloud save plus run folder (`execute_code`, one call). Use `app.data.activeHub`:
+`app.data.activeProject` raises on an unsaved document, and `saveAs` needs a
+**DataFolder** (`proj.rootFolder`), not a name or path:
+
+```python
+import os
+prjs = app.data.activeHub.dataProjects
+proj = next((prjs.item(i) for i in range(prjs.count) if prjs.item(i).name == 'Default Project'), prjs.item(0))
+names = [proj.rootFolder.dataFiles.item(i).name for i in range(proj.rootFolder.dataFiles.count)]
+n = 1
+while 'SLAB_TOP_v%d' % n in names: n += 1
+name = 'SLAB_TOP_v%d' % n
+run_dir = os.path.join(os.path.expanduser('~'), 'fusion-renders', name)
+for d in ('renders', 'views', 'tools'): os.makedirs(os.path.join(run_dir, d), exist_ok=True)
+ok = app.activeDocument.saveAs(name, proj.rootFolder, 'SLAB - portable 6-channel production mixer', 'RevC')
+{'saved': ok, 'doc': app.activeDocument.name, 'root': design.rootComponent.name,
+ 'data_file_id': app.activeDocument.dataFile.id if app.activeDocument.dataFile else None, 'run_dir': run_dir}
+```
+
+The save takes 1–70 s. If the call times out, run the step 1 query again (the
+name will be `SLAB_TOP_vN` if it landed); never call `saveAs` twice.
+
+Step 4: copy `examples/BUILD_STATE.template.json` **unchanged in shape** to
+`<run_dir>/BUILD_STATE.json` and fill `status: "running"`, `document`,
+`data_file_id`, `run_dir`. Keep the template's keys; do not invent new ones.
+After each class, append to `completed_classes` and set `bodies`.
+
+**If the same call fails twice, stop and re-read this skill rather than trying
+variations.** Hermes blocks a tool after about 5 identical failures
+(`repeated_exact_failure_block`). It reports this as a cooldown; it is a
+harness guardrail, not a Fusion or MCP fault, and waiting or pinging does not
+fix the cause.
+
 ## Stages
 
 | Stage | Work | Evidence |
