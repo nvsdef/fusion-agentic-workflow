@@ -12,6 +12,9 @@ handle pixels/PDFs, never product modeling decisions.
 
 ## Preflight and state
 
+**DEMO profile: skip steps 1–5 and use the one-call "DEMO preflight" below.**
+The steps here are the FULL profile (resumable, audited).
+
 1. Load `fusion-mcp-driving` section 0 BEFORE the first identity query. Use
    `app.activeDocument.name` and `app.activeDocument.dataFile`, never
    `design.name`, `design.dataFile` or speculative Product accessors.
@@ -38,7 +41,46 @@ handle pixels/PDFs, never product modeling decisions.
    the live model. Observe supplied PDF and both reference images. Rev C skill
    dimensions govern over concept imagery; report discrepancies explicitly.
 
-### Preflight code (verified 28 Oct 2026; paste, do not reinvent)
+### DEMO preflight: one call, then build
+
+The DEMO profile assumes the user has opened a **new, unsaved, empty Design**.
+Skip BUILD_STATE.json, `verify_layout.py`, and reading the PRD PDF or mockups
+(the spec skill governs; report image discrepancies only if asked). Do
+everything in **one** `execute_code` call: assert the state, save, create the
+run folder, register the helpers. Then go straight to class 1.
+
+```python
+import os, builtins, types
+d = design; root = d.rootComponent
+state = {'doc': app.activeDocument.name, 'product': app.activeProduct.productType,
+         'edit': d.activeEditObject.objectType, 'occ': root.occurrences.count,
+         'bodies': root.bRepBodies.count, 'timeline': d.timeline.count}
+assert (state['product'] == 'DesignProductType' and state['edit'] == 'adsk::fusion::Component'
+        and state['occ'] == 0 and state['bodies'] == 0 and state['timeline'] == 0), state
+SRC = r'''
+...paste slab-product-spec §1 and §1b code blocks here, verbatim...
+'''
+m = types.ModuleType('slabu'); exec(SRC, m.__dict__); builtins.SU = m
+prjs = app.data.activeHub.dataProjects
+proj = next((prjs.item(i) for i in range(prjs.count) if prjs.item(i).name == 'Default Project'), prjs.item(0))
+names = [proj.rootFolder.dataFiles.item(i).name for i in range(proj.rootFolder.dataFiles.count)]
+n = 1
+while 'SLAB_TOP_v%d' % n in names: n += 1
+name = 'SLAB_TOP_v%d' % n
+run_dir = os.path.join(os.path.expanduser('~'), 'fusion-renders', name)
+for sub in ('renders', 'views', 'tools'): os.makedirs(os.path.join(run_dir, sub), exist_ok=True)
+ok = app.activeDocument.saveAs(name, proj.rootFolder, 'SLAB - portable 6-channel production mixer', 'RevC')
+{'state': state, 'saved': ok, 'doc': app.activeDocument.name, 'run_dir': run_dir, 'SU': hasattr(builtins, 'SU')}
+```
+
+If the assertion fails, stop and tell the user what is open; do not clear it.
+If the call times out, the save is probably still landing: query
+`app.activeDocument.name` and `hasattr(builtins, 'SU')` once, and never call
+`saveAs` again. Pre-saving the empty document before an audience is watching
+removes the ~70 s save from the run. In that case, skip the `saveAs` lines,
+take `name` from `app.activeDocument.name`, and keep the rest.
+
+### Preflight code, FULL profile (verified 28 Oct 2026; paste, do not reinvent)
 
 Order: Step 1 query, then Step 3 save (it picks the name and run folder), then
 register the SU helpers **in a separate call**, then write BUILD_STATE.json with
