@@ -24,7 +24,7 @@ Follow [SETUP.md](SETUP.md) for the one-time Fusion activation and client regist
 
 > Read `agents/cad-engineer/skills/slab-run/SKILL.md` and run SLAB end to end with the DEMO profile: save, build all twelve classes live with per-class checks, CMF, one preview hero render, plan capture, line views and A3 sheet, then the two-sheet native drawing with parts list last. Report measured PASS/FAIL per stage and clock time per step. Generate the geometry yourself through MCP. Record failures instead of declaring unverified stages passed.
 
-For deliverable-quality renders, ask for the FULL profile instead. Full prompt and both variants: [examples/01_slab_mixer/prompt.md](examples/01_slab_mixer/prompt.md).
+Repeating a demo? Follow [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md). For deliverable-quality renders, ask for the FULL profile instead. Full prompt and both variants: [examples/01_slab_mixer/prompt.md](examples/01_slab_mixer/prompt.md).
 
 ## Architecture
 

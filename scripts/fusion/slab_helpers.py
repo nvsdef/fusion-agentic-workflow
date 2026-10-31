@@ -575,17 +575,19 @@ def capture_line_views(out_dir, target_cm, view_extents_cm, size=2200, views=Non
 
 # ---------------------------------------------------------------- native drawing
 
-def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True, open_drawing=True):
-    """Two-sheet native drawing via the Drawing API. LAST Fusion action.
+_LAST_DRAWING = {}
+
+
+def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True, open_drawing=False):
+    """Create the two-sheet native drawing via the Drawing API. Does NOT open it by default.
 
     Main assembly only, first level, NO component sheets, auto-dimension OFF.
-    The FIRST drawing after a fresh build has crashed Fusion's drawing engine
-    (acadm.crx c0000027 popup, file still created); after the user clicks OK
-    and returns to the Design tab, calling this again has displayed it. See
-    fusion-2d-drawings §3a for the retry procedure. Writes timings to log_path
-    before opening, because the MCP response can be lost once the Drawing is
-    active. Afterwards the agent cannot see the drawing: ask the user to
-    confirm it displayed with the parts list.
+    Then call open_native_drawing() in a SEPARATE execute_code call: opening in
+    the same call as createDrawing crashed Fusion's drawing engine (acadm.crx
+    c0000027 popup) on the first drawing after a build 4 times out of 4, while
+    create-then-open-separately displayed without a popup (30 Oct 2026).
+    Writes timings to log_path. Afterwards ask the user to confirm the drawing
+    and parts list are on screen.
     """
     import adsk.drawing as D
     a = app()
@@ -627,11 +629,34 @@ def native_drawing(log_path, parts_list=True, orthogonal=True, iso=True, open_dr
     df = mgr.createDrawing(di)
     r['t_created'] = stamp()
     r['drawing'] = df.name if df else None
+    _LAST_DRAWING.clear()
+    _LAST_DRAWING.update(data_file=df, log_path=log_path, record=r)
     w()
     if open_drawing:
         a.documents.open(df)
         r['t_opened'] = stamp()
     else:
-        r['opened'] = False   # user opens it from the Data Panel
+        r['opened'] = False   # open with open_native_drawing() in the NEXT call
     w()
+    return r
+
+
+def open_native_drawing():
+    """Open the drawing created by native_drawing(). Call in a SEPARATE execute_code call.
+
+    LAST Fusion action. Opening can take over a minute (views are generated)
+    and may exceed a client request timeout while still succeeding: never call
+    it twice. Afterwards the Drawing is active and execute_code no longer works
+    on the model; ask the user to confirm the drawing and parts list displayed.
+    """
+    if not _LAST_DRAWING.get('data_file'):
+        raise RuntimeError('No drawing created in this session; call native_drawing() first')
+    r = _LAST_DRAWING['record']
+    r['t_open_start'] = stamp()
+    with open(_LAST_DRAWING['log_path'], 'w') as fh:
+        json.dump(r, fh, indent=1)
+    app().documents.open(_LAST_DRAWING['data_file'])
+    r['t_opened'] = stamp()
+    with open(_LAST_DRAWING['log_path'], 'w') as fh:
+        json.dump(r, fh, indent=1)
     return r

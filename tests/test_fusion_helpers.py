@@ -18,6 +18,7 @@ REQUIRED = {
     'make_appearance', 'find_appearance', 'assign', 'assign_component', 'appearance_tally',
     'render_setup', 'design_workspace', 'perspective_camera', 'ortho_camera',
     'project_tops', 'viewport_capture', 'capture_line_views', 'native_drawing',
+    'open_native_drawing',
 }
 
 # Product identifiers and SLAB dimensions that must stay in the spec skill.
@@ -60,12 +61,16 @@ class HelperModuleTests(unittest.TestCase):
         for node in self.tree.body:
             if isinstance(node, ast.Assign):
                 for t in node.targets:
-                    self.assertIn(getattr(t, 'id', ''), {'V', 'P3', 'EXPECT'})
+                    self.assertIn(getattr(t, 'id', ''), {'V', 'P3', 'EXPECT', '_LAST_DRAWING'})
 
     def test_drawing_keeps_auto_dimension_off_and_component_sheets_off(self):
         self.assertIn('g.isAutoDimensionEnabled = False', self.text)
         self.assertIn('g.isComponentSheetGenerated = False', self.text)
         self.assertNotIn('isAutoDimensionEnabled = True', self.text)
+
+    def test_drawing_is_not_opened_in_the_create_call(self):
+        # Opening in the same call as createDrawing crashed acadm.crx 4/4 (30 Oct 2026).
+        self.assertIn('open_drawing=False', self.text)
 
 
 if __name__ == '__main__':

@@ -19,17 +19,18 @@ Five end-to-end runs on one machine (SLAB_TOP_v4…v8). Details: [docs/runs/2026
 | 5 | DEMO, API drawing | 4:41 | 0:09 in Fusion | 0:31, but acadm.crx crash (first attempt) |
 | Test A | drawing only, second attempt on v8 | — | — | **0:24: displayed with parts list** |
 | v12, v13 (30 Oct, helpers) | DEMO via `slab_helpers.py` | ≈5–6 min | 7 s in Fusion | first attempt crashed both times (auto-dimension off; v13 also waited 3 min); second attempt on v13 displayed |
+| v14 (30 Oct) | drawing created in one call, opened in the next | — | 15 s in Fusion | **first attempt displayed with parts list, no popup** |
 
 Every run passed all 12 class checks, whole-model checks (289 bodies, 12 components, healthy, DEC-C4 0) and the CMF audit (exact tally, 0 mismatches over 2,214 checks). Fusion compute for the full build is about 15 s. In the latest run, about 1:40 of 4:41 was Fusion time; the rest was cloud save latency and agent turns. The human confirmed the native drawing and parts list displayed in Test A. The DEMO plan image is a labelled viewport capture, not a raytrace.
 
-Fixed or learned in these runs, now in the skills: body-first appearance assignment (13× faster per body); timeline health read from the timeline object; per-class `guard()` after a stray GUI click silently deleted a passed class; tested R/I/V outlines (first-pass PASS); the Drawing API instead of the `create_drawing` tool (the tool forces per-component sheets); native-drawing retry procedure (the first drawing after a fresh build crashed `acadm.crx`, c0000027, 4 of 4 times regardless of auto-dimension or waiting; the immediate second attempt displayed 2 of 2; root cause not established); the sheet JSON is a template with measured extents and materials TBD.
+Fixed or learned in these runs, now in the skills: body-first appearance assignment (13× faster per body); timeline health read from the timeline object; per-class `guard()` after a stray GUI click silently deleted a passed class; tested R/I/V outlines (first-pass PASS); the Drawing API instead of the `create_drawing` tool (the tool forces per-component sheets); create and open the native drawing in separate calls (opening in the create call crashed `acadm.crx`, c0000027, on the first drawing after a build 4 of 4 times regardless of auto-dimension or waiting; create-then-open-separately displayed on the first attempt); the sheet JSON is a template with measured extents and materials TBD.
 
 ## Findings carried forward
 
 - **Pad calibration open.** At brightness 1700 / exposure 9.5 with the spec CMF, pads measure G:R 0.663, luminance 179.5, red clipped (spread 4 PASS), identically at preview and q95. Lowering emissive luminance 150 → 25 only reached 0.596 / 166.9, because the albedo saturates red on its own. Needs a spec-owner decision; runs report FAIL and do not tune.
 - **composite.py matte leak.** On 28 Oct 2026 the raytraced backdrop was not uniform (levels 172–178), so flood-fill keying leaked: a halo on the hero, and the plan crop shifted off the product. Difference-matte compositing is not yet implemented; the FULL profile must inspect composites and fall back to raw renders.
 - **Cloud save latency.** The first `saveAs` took 0.6 s to over 65 s across runs; in the Claude desktop app it can exceed the ~65 s call timeout while succeeding.
-- **First native drawing crashes.** See the retry procedure in fusion-2d-drawings §3a. Root cause unknown; earlier attributions to auto-dimension and upload timing were disproved.
+- **Native drawing must be opened in a separate call.** Opening in the create call crashed `acadm.crx` (fusion-2d-drawings §3a). Confirmed on one first attempt so far (v14); earlier attributions to auto-dimension and upload timing were disproved.
 - **create_drawing tool.** The pinned add-in hard-codes component sheets (all levels). Use the Drawing API path until the add-in exposes the option.
 
 - First R legend area 39.36 mm² failed; targeted repair gave R40.96, I15.20, V27.30, inside the provisional ±1.5 bands. V/seam intersection remains an artwork decision.

@@ -216,8 +216,8 @@ Budget one fix round and check the whole page, not just the region you changed.
 
 ### 3a · Default: Drawing API through `execute_code` (tested 28 Oct 2026)
 
-**Call `S.native_drawing(run_dir + r'\drawing_log.json')`** from
-`scripts/fusion/slab_helpers.py`. It is this exact code. The block below
+**Call `S.native_drawing(run_dir + r'\drawing_log.json')`, then
+`S.open_native_drawing()` in the next call**, from `scripts/fusion/slab_helpers.py`. It is this exact code. The block below
 documents the settings; do not retype it.
 
 Two sheets in the Drawing workspace: an isometric view with the **parts list**,
@@ -266,26 +266,26 @@ Do not read `app.activeProduct.productType` straight after opening: it raises
 views or parts lists, so file creation proves nothing about display. **Ask the
 user to confirm the drawing and parts list are on screen.**
 
-**Known Fusion fault: the first drawing after a fresh build can crash; the
-second attempt displays.** On 28–30 Oct 2026, the first native drawing created
-for a freshly built SLAB raised `Exception in acadm.crx ARX Command — Unhandled
-Exception c0000027 (c0000027h)` four times out of four (SLAB_TOP v7, v8, v12,
-v13). That held with auto-dimension on or off, created straight after the last
-save or 3 minutes later, and with the document unmodified. The file is still
-created (it shows in Fusion's job panel), but it does not display. After the
-user clicked OK, closed the drawing tab and returned to the Design tab,
-creating the same drawing again displayed it, with its parts list, two times
-out of two (v8 and v13). Root cause is not established; earlier notes blaming
-auto-dimension or upload timing were disproved by these tests.
+**Create and open in two separate calls.** Opening the drawing in the same
+`execute_code` call that created it raised `Exception in acadm.crx ARX Command —
+Unhandled Exception c0000027` on the first drawing after a fresh build 4 times
+out of 4 (SLAB_TOP v7, v8, v12, v13; auto-dimension on or off, with or without a
+3-minute wait). The file was created, but it never displayed. Creating it in one
+call and opening it in the next displayed it with the parts list and no popup
+(v14, 30 Oct 2026). The likely reason is that Fusion is still generating views
+after `createDrawing` returns. Earlier notes blaming auto-dimension or upload
+timing were disproved.
 
-**Procedure** (the popup is modal and invisible to the agent):
-1. `S.native_drawing(log_path)`, then ask the user: *"Is the drawing on screen
-   with the parts list, or did an acadm.crx popup appear?"*
-2. If the popup appeared: ask the user to click **OK**, close the drawing tab
-   without saving, click the Design tab, and reply. Then run
-   `S.native_drawing(log_path)` **once more** with the same settings.
-3. If the second attempt also fails, stop and report; the composed A3 PDF is
-   the 2D deliverable.
+```python
+# call 1
+SU.native_drawing(run_dir + r'\drawing_log.json')     # creates, does not open
+# call 2 (separate execute_code call)
+SU.open_native_drawing()                                # LAST Fusion action
+```
+
+The open can take over a minute and may exceed the client's request timeout
+while succeeding. Never call it twice; after a timeout, ask the user what is on
+screen. Then ask the user to confirm the drawing and parts list displayed.
 
 Auto-dimension stays off: dimensions live on the composed A3 sheet, measured
 from geometry (§2), and enabling it was never shown to be safe.

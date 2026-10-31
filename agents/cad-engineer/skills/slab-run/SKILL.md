@@ -94,7 +94,7 @@ only creates the run folder. Then go straight to class 1.
 | 8 Pads | `S.project_tops('SLAB_Keypad', run_dir + '\\tools\\hero_rois.json')` (after the render finishes), then host `scripts/pad_roi.py`; report once |
 | 9a Plan | `S.design_workspace()`, `S.ortho_camera((0,0,1), (0,1,0), (0,0,2.6), fit_margin=1.10)`, `S.viewport_capture(run_dir + '\\renders\\plan_viewport_capture.png', 920, 1400)` |
 | 9b Line art | Announce monochrome; `S.capture_line_views(run_dir + '\\views', (0, 0, 3.06), 38.0)`; host `make_views.py` and `make_drawing.py` on a filled copy of `slab_sheet.json` |
-| 9c Drawing | `S.native_drawing(run_dir + '\\drawing_log.json')`, LAST; ask the user whether it displayed. If an acadm.crx popup appeared: user clicks OK, closes the drawing tab, returns to the Design tab; then call `S.native_drawing` once more (fusion-2d-drawings §3a) |
+| 9c Drawing | Call 1: `S.native_drawing(run_dir + '\\drawing_log.json')` (creates, does not open). Call 2, separate: `S.open_native_drawing()`, the LAST Fusion action (may time out while succeeding; never repeat). Then ask the user to confirm the drawing and parts list displayed |
 
 **A DEMO run is complete only with all of these**, each reported with its
 evidence; anything missing is reported as NOT DONE, never folded into "scope":
@@ -358,13 +358,13 @@ wants and saved nothing. Settings (`import adsk.drawing as D`):
   sheet ON, no parts list; view style visible edges, tangent edges off
 - `mgr.createDrawing(di)` then `app.documents.open(df)`
 
-**The first drawing after a fresh build can crash Fusion's drawing engine**
-(`acadm.crx`, c0000027): 4 of 4 first attempts, regardless of auto-dimension
-or waiting; the immediate second attempt displayed 2 of 2. Follow the
-retry procedure in fusion-2d-drawings §3a: ask the user whether it displayed,
-and if the popup appeared, have them click OK, close the drawing tab and return
-to the Design tab, then create it once more. The crash dialog is modal and
-invisible to the agent: never claim a native drawing from file creation alone.
+**Create and open in two separate calls** (`S.native_drawing(...)`, then
+`S.open_native_drawing()`). Opening in the same call crashed Fusion's drawing
+engine (`acadm.crx`, c0000027) on the first drawing after a build 4 of 4 times;
+create-then-open-separately displayed without a popup (fusion-2d-drawings
+§3a). The open can exceed the request timeout while succeeding: never repeat
+it. The crash dialog is modal and invisible to the agent, so ask the user to
+confirm the drawing displayed and never claim it from file creation alone.
 Auto-dimension stays off; dimensions live on the composed A3 PDF.
 
 Measured 28 Oct 2026 (SLAB_TOP_v8, auto-dimension off): `createDrawing` 19 s,
